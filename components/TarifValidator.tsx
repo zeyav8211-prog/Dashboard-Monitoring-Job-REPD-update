@@ -7,6 +7,8 @@ interface TarifValidatorProps {
     category: ValidationCategory;
 }
 
+type CSVRowData = Record<string, any>;
+
 export const TarifValidator: React.FC<TarifValidatorProps> = ({ category }) => {
   const [fileIT, setFileIT] = useState<File | null>(null);
   const [fileMaster, setFileMaster] = useState<File | null>(null);
@@ -164,24 +166,24 @@ export const TarifValidator: React.FC<TarifValidatorProps> = ({ category }) => {
   const CHUNK_SIZE = 1024 * 1024 * 5; // 5MB Chunk
 
   const parseLine = (line: string, delimiter: string) => {
-    const result: string[] = [];
+    const resultArr: string[] = [];
     let start = 0;
     let inQuotes = false;
     for (let i = 0; i < line.length; i++) {
         if (line[i] === '"') { inQuotes = !inQuotes; }
         else if (line[i] === delimiter && !inQuotes) {
-            result.push(line.substring(start, i));
+            resultArr.push(line.substring(start, i));
             start = i + 1;
         }
     }
-    result.push(line.substring(start));
-    return result.map(v => v.trim().replace(/^"|"$/g, ''));
+    resultArr.push(line.substring(start));
+    return resultArr.map(v => v.trim().replace(/^"|"$/g, ''));
   };
 
   const processFileChunked = async (
       file: File, 
       onHeader: (headers: string[], delimiter: string) => void,
-      onRows: (rows: any[]) => void,
+      onRows: (rows: CSVRowData[]) => void,
       onProgress: (percent: number) => void
   ) => {
       let offset = 0;
@@ -226,18 +228,18 @@ export const TarifValidator: React.FC<TarifValidatorProps> = ({ category }) => {
                   startIndex = 1;
               }
 
-              const rows: any[] = [];
+              const rowsArr: CSVRowData[] = [];
               for (let i = startIndex; i < validLines.length; i++) {
                   const values = parseLine(validLines[i], delimiter);
-                  const row: any = {};
+                  const rowObj: CSVRowData = {};
                   if (values.length === 1 && values[0] === '') continue;
 
                   headers.forEach((h, idx) => {
-                      if (h) row[h.trim()] = values[idx] || '';
+                      if (h) rowObj[h.trim()] = values[idx] || '';
                   });
-                  rows.push(row);
+                  rowsArr.push(rowObj);
               }
-              onRows(rows);
+              onRows(rowsArr);
           }
 
           offset += CHUNK_SIZE;
@@ -263,12 +265,12 @@ export const TarifValidator: React.FC<TarifValidatorProps> = ({ category }) => {
 
     try {
         setStatusMessage('Membaca Master Data (Acuan)...');
-        const masterMap = new Map<string, any>();
+        const masterMap = new Map<string, CSVRowData>();
         
         await processFileChunked(
             fileMaster,
             () => {}, 
-            (rows: any[]) => {
+            (rows: CSVRowData[]) => {
                 if (category === 'BIAYA') {
                     const keys = Object.keys(rows[0] || {});
                     const destKey = keys.find(k => k.toUpperCase().includes('DEST')) || 'DESTINASI';
@@ -329,8 +331,8 @@ export const TarifValidator: React.FC<TarifValidatorProps> = ({ category }) => {
                      if (!hasSys) throw new Error("File IT harus memiliki kolom SYS_CODE");
                  }
             },
-            (rows: any[]) => {
-                rows.forEach((itRow: any) => {
+            (rows: CSVRowData[]) => {
+                rows.forEach((itRow: CSVRowData) => {
                     rowIndexGlobal++;
                     const rowIndex = rowIndexGlobal;
 
@@ -384,13 +386,13 @@ export const TarifValidator: React.FC<TarifValidatorProps> = ({ category }) => {
                              reportRow.bdNextMaster = getMasterVal('BD NEXT');
 
                              const issues: string[] = [];
-                             const details: ValidationDetail[] = [];
+                             const detailsArr: ValidationDetail[] = [];
                              const check = (col: string, valIT: number | undefined, valMaster: number | undefined) => {
                                  const v1 = valIT || 0;
                                  const v2 = valMaster || 0;
                                  const match = v1 === v2;
                                  if (!match) issues.push(col);
-                                 details.push({ column: col, itValue: v1, masterValue: v2, isMatch: match });
+                                 detailsArr.push({ column: col, itValue: v1, masterValue: v2, isMatch: match });
                              };
 
                              check('BP', reportRow.bpIT, reportRow.bpMaster);
@@ -404,7 +406,7 @@ export const TarifValidator: React.FC<TarifValidatorProps> = ({ category }) => {
                                  matchesCount++;
                              } else {
                                  reportRow.keterangan = `Tidak sesuai: ${issues.join(', ')}`;
-                                 mismatches.push({ rowId: rowIndex, reasons: issues, details: details });
+                                 mismatches.push({ rowId: rowIndex, reasons: issues, details: detailsArr });
                              }
                          }
                          fullReport.push(reportRow);
@@ -463,26 +465,26 @@ export const TarifValidator: React.FC<TarifValidatorProps> = ({ category }) => {
                              mismatches.push({ rowId: rowIndex, reasons: ['Master Data Tidak Ada'], details: [] });
                         } else {
                              const issues: string[] = [];
-                             const details: ValidationDetail[] = [];
+                             const detailsArr: ValidationDetail[] = [];
                              
                              const isSame = (val1: string | number, val2: string | number) => 
                                  String(val1).trim().replace(/\s/g,'').toUpperCase() === String(val2).trim().replace(/\s/g,'').toUpperCase();
 
                              if (!isSame(reportRow.serviceIT, reportRow.serviceMaster)) {
                                  issues.push('Service');
-                                 details.push({ column: 'Service', itValue: reportRow.serviceIT, masterValue: reportRow.serviceMaster, isMatch: false });
+                                 detailsArr.push({ column: 'Service', itValue: reportRow.serviceIT, masterValue: reportRow.serviceMaster, isMatch: false });
                              }
                              if (reportRow.tarifIT !== reportRow.tarifMaster) {
                                  issues.push('Tarif');
-                                 details.push({ column: 'Tarif', itValue: reportRow.tarifIT, masterValue: reportRow.tarifMaster, isMatch: false });
+                                 detailsArr.push({ column: 'Tarif', itValue: reportRow.tarifIT, masterValue: reportRow.tarifMaster, isMatch: false });
                              }
                              if (reportRow.slaFormIT !== reportRow.slaFormMaster) {
                                  issues.push('SLA_FORM');
-                                 details.push({ column: 'sla_form', itValue: reportRow.slaFormIT, masterValue: reportRow.slaFormMaster, isMatch: false });
+                                 detailsArr.push({ column: 'sla_form', itValue: reportRow.slaFormIT, masterValue: reportRow.slaFormMaster, isMatch: false });
                              }
                              if (reportRow.slaThruIT !== reportRow.slaThruMaster) {
                                  issues.push('SLA_THRU');
-                                 details.push({ column: 'sla_thru', itValue: reportRow.slaThruIT, masterValue: reportRow.slaThruMaster, isMatch: false });
+                                 detailsArr.push({ column: 'sla_thru', itValue: reportRow.slaThruIT, masterValue: reportRow.slaThruMaster, isMatch: false });
                              }
 
                              if (issues.length === 0) {
@@ -490,7 +492,7 @@ export const TarifValidator: React.FC<TarifValidatorProps> = ({ category }) => {
                                  matchesCount++;
                              } else {
                                  reportRow.keterangan = `Tidak sesuai : ${issues.join(', ')}`;
-                                 mismatches.push({ rowId: rowIndex, reasons: issues, details: details });
+                                 mismatches.push({ rowId: rowIndex, reasons: issues, details: detailsArr });
                              }
                         }
                         fullReport.push(reportRow);
@@ -538,19 +540,19 @@ export const TarifValidator: React.FC<TarifValidatorProps> = ({ category }) => {
 
   const getDisplayedRows = useMemo(() => {
       if (!result) return [];
-      let rows = [];
+      let rowsArr: FullValidationRow[] = [];
       
       if (result.totalRows > 0 && result.fullReport.length === 0) {
           return [];
       }
 
-      if (reportFilter === 'ALL') rows = result.fullReport;
-      else if (reportFilter === 'MATCH') rows = result.fullReport.filter(r => r.keterangan === 'Sesuai');
-      else if (reportFilter === 'BLANK') rows = result.fullReport.filter(r => r.keterangan.includes('Tidak Ada'));
-      else if (reportFilter === 'MISMATCH') rows = result.fullReport.filter(r => !r.keterangan.includes('Sesuai') && !r.keterangan.includes('Tidak Ada'));
-      else rows = [];
+      if (reportFilter === 'ALL') rowsArr = result.fullReport;
+      else if (reportFilter === 'MATCH') rowsArr = result.fullReport.filter(r => r.keterangan === 'Sesuai');
+      else if (reportFilter === 'BLANK') rowsArr = result.fullReport.filter(r => r.keterangan.includes('Tidak Ada'));
+      else if (reportFilter === 'MISMATCH') rowsArr = result.fullReport.filter(r => !r.keterangan.includes('Sesuai') && !r.keterangan.includes('Tidak Ada'));
+      else rowsArr = [];
       
-      return rows;
+      return rowsArr;
   }, [result, reportFilter]);
 
   const totalPages = Math.ceil(getDisplayedRows.length / ROWS_PER_PAGE);
