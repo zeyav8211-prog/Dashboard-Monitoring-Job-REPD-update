@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, useMemo } from 'react';
 import { Upload, FileUp, AlertTriangle, CheckCircle2, Download, Eye, X, Table as TableIcon, History, RotateCcw, Trash2, HelpCircle, ChevronLeft, ChevronRight } from 'lucide-react';
 import { ValidationResult, ValidationMismatch, FullValidationRow, ValidationDetail, ValidationHistoryItem, ValidationCategory } from '../types';
@@ -623,7 +622,7 @@ export const TarifValidator: React.FC<TarifValidatorProps> = ({ category }) => {
             <p className="text-xs text-slate-400 mb-3">Upload file CSV</p>
             
             <input type="file" onChange={(e) => handleFileChange(e, 'MASTER')} className="hidden" id="file-master" accept=".csv" />
-            <label htmlFor="file-master" className="cursor-pointer px-4 py-2 border border-dashed border-slate-300 rounded-lg text-sm text-slate-600 hover:bg-slate-50 hover:border-purple-500 transition w-full truncate mb-3">
+            <label htmlFor="file-master" className="cursor-pointer px-4 py-2 border border-dashed border-slate-300 rounded-lg text-sm text-slate-600 hover:bg-slate-50 hover:border-blue-500 transition w-full truncate mb-3">
                 {fileMaster ? fileMaster.name : (result ? 'Tidak ada file baru' : 'Click to Upload')}
             </label>
             <button onClick={() => downloadTemplate('MASTER')} className="text-xs text-purple-600 hover:text-purple-800 flex items-center gap-1 font-medium border border-purple-100 px-3 py-1 rounded hover:bg-blue-50 transition">
@@ -749,7 +748,7 @@ export const TarifValidator: React.FC<TarifValidatorProps> = ({ category }) => {
                 <History size={20} className="text-slate-500" />
                 Riwayat Validasi {category}
             </h3>
-            {displayedHistory.length > 0 && (
+            {history.length > 0 && (
                 <button onClick={clearHistory} className="text-red-500 hover:text-red-700 text-sm flex items-center gap-1">
                     <Trash2 size={16} /> Hapus Riwayat
                 </button>
