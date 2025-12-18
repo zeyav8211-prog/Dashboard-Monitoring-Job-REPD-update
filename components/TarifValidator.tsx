@@ -110,10 +110,10 @@ export const TarifValidator: React.FC<TarifValidatorProps> = ({ category }) => {
         return;
     }
     
-    const dataToExport = rowsToDownload || result.fullReport;
+    const dataToExport: Array<FullValidationRow> = rowsToDownload || result.fullReport;
     
     let csvHeader: string = '';
-    let csvRows: string[] = [];
+    let csvRows: Array<string> = [];
 
     const esc = (val: any): string => {
         const str = String(val === undefined || val === null ? '' : val);
@@ -166,29 +166,29 @@ export const TarifValidator: React.FC<TarifValidatorProps> = ({ category }) => {
   const CHUNK_SIZE = 1024 * 1024 * 5; // 5MB Chunk
 
   const parseLine = (line: string, delimiter: string) => {
-    const resultItems: string[] = [];
+    const lineParts: Array<string> = [];
     let start = 0;
     let inQuotes = false;
     for (let i = 0; i < line.length; i++) {
         if (line[i] === '"') { inQuotes = !inQuotes; }
         else if (line[i] === delimiter && !inQuotes) {
-            resultItems.push(line.substring(start, i));
+            lineParts.push(line.substring(start, i));
             start = i + 1;
         }
     }
-    resultItems.push(line.substring(start));
-    return resultItems.map(v => v.trim().replace(/^"|"$/g, ''));
+    lineParts.push(line.substring(start));
+    return lineParts.map(v => v.trim().replace(/^"|"$/g, ''));
   };
 
   const processFileChunked = async (
       file: File, 
       onHeader: (headers: string[], delimiter: string) => void,
-      onRows: (rows: CSVRowData[]) => void,
+      onRows: (rows: Array<CSVRowData>) => void,
       onProgress: (percent: number) => void
   ) => {
       let offset = 0;
       let leftover = '';
-      let headers: string[] | null = null;
+      let headers: Array<string> | null = null;
       let delimiter = ',';
       
       const fileSize = file.size;
@@ -227,7 +227,7 @@ export const TarifValidator: React.FC<TarifValidatorProps> = ({ category }) => {
                   startIndex = 1;
               }
 
-              const currentRows: CSVRowData[] = [];
+              const rowsToProcess: Array<CSVRowData> = [];
               for (let i = startIndex; i < validLines.length; i++) {
                   const values = parseLine(validLines[i], delimiter);
                   const rowObj: CSVRowData = {};
@@ -236,9 +236,9 @@ export const TarifValidator: React.FC<TarifValidatorProps> = ({ category }) => {
                   headers.forEach((h, idx) => {
                       if (h) rowObj[h.trim()] = values[idx] || '';
                   });
-                  currentRows.push(rowObj);
+                  rowsToProcess.push(rowObj);
               }
-              onRows(currentRows);
+              onRows(rowsToProcess);
           }
 
           offset += CHUNK_SIZE;
@@ -269,16 +269,18 @@ export const TarifValidator: React.FC<TarifValidatorProps> = ({ category }) => {
         await processFileChunked(
             fileMaster,
             () => {}, 
-            (rowsInChunk: CSVRowData[]) => {
+            (rowsInChunk: Array<CSVRowData>) => {
                 if (category === 'BIAYA') {
-                    const keys = Object.keys(rowsInChunk[0] || {});
+                    const firstRow = rowsInChunk[0] || {};
+                    const keys = Object.keys(firstRow);
                     const destKey = keys.find(k => k.toUpperCase().includes('DEST')) || 'DESTINASI';
                     rowsInChunk.forEach(row => {
                         const k = String(row[destKey] || '').trim().toUpperCase();
                         if (k) masterMap.set(k, row);
                     });
                 } else {
-                    const keys = Object.keys(rowsInChunk[0] || {});
+                    const firstRow = rowsInChunk[0] || {};
+                    const keys = Object.keys(firstRow);
                     const sysKey = keys.find(k => k.trim().replace(/_/g, '').toUpperCase() === 'SYSCODE');
                     if (!sysKey) return; 
                     rowsInChunk.forEach(row => {
@@ -296,8 +298,8 @@ export const TarifValidator: React.FC<TarifValidatorProps> = ({ category }) => {
 
         setStatusMessage('Memvalidasi Data IT (Baris per baris)...');
         
-        const fullReport: FullValidationRow[] = [];
-        const mismatches: ValidationMismatch[] = [];
+        const fullReport: Array<FullValidationRow> = [];
+        const mismatches: Array<ValidationMismatch> = [];
         let matchesCount = 0;
         let blanksCount = 0;
         let rowIndexGlobal = 0;
@@ -330,7 +332,7 @@ export const TarifValidator: React.FC<TarifValidatorProps> = ({ category }) => {
                      if (!hasSys) throw new Error("File IT harus memiliki kolom SYS_CODE");
                  }
             },
-            (rowsInChunk: CSVRowData[]) => {
+            (rowsInChunk: Array<CSVRowData>) => {
                 rowsInChunk.forEach((itRow: CSVRowData) => {
                     rowIndexGlobal++;
                     const rowIndex = rowIndexGlobal;
@@ -384,8 +386,8 @@ export const TarifValidator: React.FC<TarifValidatorProps> = ({ category }) => {
                              reportRow.bdMaster = getMasterVal('BD');
                              reportRow.bdNextMaster = getMasterVal('BD NEXT');
 
-                             const issues: string[] = [];
-                             const currentDetails: ValidationDetail[] = [];
+                             const issues: Array<string> = [];
+                             const currentDetails: Array<ValidationDetail> = [];
                              const checkMatch = (col: string, valIT: number | undefined, valMaster: number | undefined) => {
                                  const v1 = valIT || 0;
                                  const v2 = valMaster || 0;
@@ -459,8 +461,8 @@ export const TarifValidator: React.FC<TarifValidatorProps> = ({ category }) => {
                              blanksCount++;
                              mismatches.push({ rowId: rowIndex, reasons: ['Master Data Tidak Ada'], details: [] });
                         } else {
-                             const issues: string[] = [];
-                             const currentDetails: ValidationDetail[] = [];
+                             const issues: Array<string> = [];
+                             const currentDetails: Array<ValidationDetail> = [];
                              const isSame = (val1: string | number, val2: string | number) => 
                                  String(val1).trim().replace(/\s/g,'').toUpperCase() === String(val2).trim().replace(/\s/g,'').toUpperCase();
 
@@ -533,7 +535,7 @@ export const TarifValidator: React.FC<TarifValidatorProps> = ({ category }) => {
 
   const getDisplayedRows = useMemo(() => {
       if (!result) return [];
-      let rowsList: FullValidationRow[] = [];
+      let rowsList: Array<FullValidationRow> = [];
       
       if (result.totalRows > 0 && result.fullReport.length === 0) {
           return [];
@@ -624,7 +626,7 @@ export const TarifValidator: React.FC<TarifValidatorProps> = ({ category }) => {
             <label htmlFor="file-master" className="cursor-pointer px-4 py-2 border border-dashed border-slate-300 rounded-lg text-sm text-slate-600 hover:bg-slate-50 hover:border-purple-500 transition w-full truncate mb-3">
                 {fileMaster ? fileMaster.name : (result ? 'Tidak ada file baru' : 'Click to Upload')}
             </label>
-            <button onClick={() => downloadTemplate('MASTER')} className="text-xs text-purple-600 hover:text-purple-800 flex items-center gap-1 font-medium border border-purple-100 px-3 py-1 rounded hover:bg-purple-50 transition">
+            <button onClick={() => downloadTemplate('MASTER')} className="text-xs text-purple-600 hover:text-purple-800 flex items-center gap-1 font-medium border border-purple-100 px-3 py-1 rounded hover:bg-blue-50 transition">
                 <Download size={12}/> Download Template Master
             </button>
             {fileMaster && <span className="absolute top-4 right-4 text-green-500"><CheckCircle2 size={20}/></span>}
