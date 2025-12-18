@@ -286,7 +286,7 @@ export const TarifValidator: React.FC<TarifValidatorProps> = ({ category }) => {
                     });
                 }
             },
-            (pct) => setProgress(Math.round(pct * 0.3)) 
+            (pct: number) => setProgress(Math.round(pct * 0.3)) 
         );
 
         if (masterMap.size === 0) {
@@ -330,7 +330,7 @@ export const TarifValidator: React.FC<TarifValidatorProps> = ({ category }) => {
                  }
             },
             (rows: any[]) => {
-                rows.forEach((itRow) => {
+                rows.forEach((itRow: any) => {
                     rowIndexGlobal++;
                     const rowIndex = rowIndexGlobal;
 
@@ -497,7 +497,7 @@ export const TarifValidator: React.FC<TarifValidatorProps> = ({ category }) => {
                     }
                 });
             },
-            (pct) => setProgress(30 + Math.round(pct * 0.7)) 
+            (pct: number) => setProgress(30 + Math.round(pct * 0.7)) 
         );
 
         setStatusMessage('Menyimpan hasil...');
