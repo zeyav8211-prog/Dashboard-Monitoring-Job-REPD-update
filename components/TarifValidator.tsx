@@ -110,7 +110,7 @@ export const TarifValidator: React.FC<TarifValidatorProps> = ({ category }) => {
         return;
     }
     
-    const data = rowsToDownload || result.fullReport;
+    const dataToExport = rowsToDownload || result.fullReport;
     
     let csvHeader: string = '';
     let csvRows: string[] = [];
@@ -130,7 +130,7 @@ export const TarifValidator: React.FC<TarifValidatorProps> = ({ category }) => {
             'SERVICE', 'TARIF', 'SLA_FORM', 'SLA_THRU', 'Keterangan'
         ].join(',');
 
-        csvRows = data.map(row => [
+        csvRows = dataToExport.map(row => [
             esc(row.origin), esc(row.dest), esc(row.sysCode),
             esc(row.serviceMaster), esc(row.tarifMaster), esc(row.slaFormMaster), esc(row.slaThruMaster),
             esc(row.serviceIT), esc(row.tarifIT), esc(row.slaFormIT), esc(row.slaThruIT),
@@ -143,7 +143,7 @@ export const TarifValidator: React.FC<TarifValidatorProps> = ({ category }) => {
             'BP IT', 'BP Next IT', 'BT IT', 'BD IT', 'BD Next IT', 'Keterangan'
         ].join(',');
 
-        csvRows = data.map(row => [
+        csvRows = dataToExport.map(row => [
             esc(row.origin), esc(row.dest), esc(row.serviceIT), esc(row.serviceMaster), 
             esc(row.bpMaster), esc(row.bpNextMaster), esc(row.btMaster), esc(row.bdMaster), esc(row.bdNextMaster),
             esc(row.bpIT), esc(row.bpNextIT), esc(row.btIT), esc(row.bdIT), esc(row.bdNextIT),
@@ -166,18 +166,18 @@ export const TarifValidator: React.FC<TarifValidatorProps> = ({ category }) => {
   const CHUNK_SIZE = 1024 * 1024 * 5; // 5MB Chunk
 
   const parseLine = (line: string, delimiter: string) => {
-    const resultArr: string[] = [];
+    const resultItems: string[] = [];
     let start = 0;
     let inQuotes = false;
     for (let i = 0; i < line.length; i++) {
         if (line[i] === '"') { inQuotes = !inQuotes; }
         else if (line[i] === delimiter && !inQuotes) {
-            resultArr.push(line.substring(start, i));
+            resultItems.push(line.substring(start, i));
             start = i + 1;
         }
     }
-    resultArr.push(line.substring(start));
-    return resultArr.map(v => v.trim().replace(/^"|"$/g, ''));
+    resultItems.push(line.substring(start));
+    return resultItems.map(v => v.trim().replace(/^"|"$/g, ''));
   };
 
   const processFileChunked = async (
@@ -203,7 +203,6 @@ export const TarifValidator: React.FC<TarifValidatorProps> = ({ category }) => {
           });
 
           const cleanText = (offset === 0) ? text.replace(/^\uFEFF/, '') : text;
-          
           const rawLines = (leftover + cleanText).split(/\r\n|\n/);
           
           if (offset + CHUNK_SIZE < fileSize) {
@@ -228,7 +227,7 @@ export const TarifValidator: React.FC<TarifValidatorProps> = ({ category }) => {
                   startIndex = 1;
               }
 
-              const rowsArr: CSVRowData[] = [];
+              const currentRows: CSVRowData[] = [];
               for (let i = startIndex; i < validLines.length; i++) {
                   const values = parseLine(validLines[i], delimiter);
                   const rowObj: CSVRowData = {};
@@ -237,9 +236,9 @@ export const TarifValidator: React.FC<TarifValidatorProps> = ({ category }) => {
                   headers.forEach((h, idx) => {
                       if (h) rowObj[h.trim()] = values[idx] || '';
                   });
-                  rowsArr.push(rowObj);
+                  currentRows.push(rowObj);
               }
-              onRows(rowsArr);
+              onRows(currentRows);
           }
 
           offset += CHUNK_SIZE;
@@ -270,19 +269,19 @@ export const TarifValidator: React.FC<TarifValidatorProps> = ({ category }) => {
         await processFileChunked(
             fileMaster,
             () => {}, 
-            (rows: CSVRowData[]) => {
+            (rowsInChunk: CSVRowData[]) => {
                 if (category === 'BIAYA') {
-                    const keys = Object.keys(rows[0] || {});
+                    const keys = Object.keys(rowsInChunk[0] || {});
                     const destKey = keys.find(k => k.toUpperCase().includes('DEST')) || 'DESTINASI';
-                    rows.forEach(row => {
+                    rowsInChunk.forEach(row => {
                         const k = String(row[destKey] || '').trim().toUpperCase();
                         if (k) masterMap.set(k, row);
                     });
                 } else {
-                    const keys = Object.keys(rows[0] || {});
+                    const keys = Object.keys(rowsInChunk[0] || {});
                     const sysKey = keys.find(k => k.trim().replace(/_/g, '').toUpperCase() === 'SYSCODE');
                     if (!sysKey) return; 
-                    rows.forEach(row => {
+                    rowsInChunk.forEach(row => {
                         const k = String(row[sysKey] || '').trim().toUpperCase();
                         if (k) masterMap.set(k, row);
                     });
@@ -331,8 +330,8 @@ export const TarifValidator: React.FC<TarifValidatorProps> = ({ category }) => {
                      if (!hasSys) throw new Error("File IT harus memiliki kolom SYS_CODE");
                  }
             },
-            (rows: CSVRowData[]) => {
-                rows.forEach((itRow: CSVRowData) => {
+            (rowsInChunk: CSVRowData[]) => {
+                rowsInChunk.forEach((itRow: CSVRowData) => {
                     rowIndexGlobal++;
                     const rowIndex = rowIndexGlobal;
 
@@ -386,27 +385,27 @@ export const TarifValidator: React.FC<TarifValidatorProps> = ({ category }) => {
                              reportRow.bdNextMaster = getMasterVal('BD NEXT');
 
                              const issues: string[] = [];
-                             const detailsArr: ValidationDetail[] = [];
-                             const check = (col: string, valIT: number | undefined, valMaster: number | undefined) => {
+                             const currentDetails: ValidationDetail[] = [];
+                             const checkMatch = (col: string, valIT: number | undefined, valMaster: number | undefined) => {
                                  const v1 = valIT || 0;
                                  const v2 = valMaster || 0;
-                                 const match = v1 === v2;
-                                 if (!match) issues.push(col);
-                                 detailsArr.push({ column: col, itValue: v1, masterValue: v2, isMatch: match });
+                                 const isMatch = v1 === v2;
+                                 if (!isMatch) issues.push(col);
+                                 currentDetails.push({ column: col, itValue: v1, masterValue: v2, isMatch });
                              };
 
-                             check('BP', reportRow.bpIT, reportRow.bpMaster);
-                             check('BP NEXT', reportRow.bpNextIT, reportRow.bpNextMaster);
-                             check('BT', reportRow.btIT, reportRow.btMaster);
-                             check('BD', reportRow.bdIT, reportRow.bdMaster);
-                             check('BD NEXT', reportRow.bdNextIT, reportRow.bdNextMaster);
+                             checkMatch('BP', reportRow.bpIT, reportRow.bpMaster);
+                             checkMatch('BP NEXT', reportRow.bpNextIT, reportRow.bpNextMaster);
+                             checkMatch('BT', reportRow.btIT, reportRow.btMaster);
+                             checkMatch('BD', reportRow.bdIT, reportRow.bdMaster);
+                             checkMatch('BD NEXT', reportRow.bdNextIT, reportRow.bdNextMaster);
 
                              if (issues.length === 0) {
                                  reportRow.keterangan = 'Sesuai';
                                  matchesCount++;
                              } else {
                                  reportRow.keterangan = `Tidak sesuai: ${issues.join(', ')}`;
-                                 mismatches.push({ rowId: rowIndex, reasons: issues, details: detailsArr });
+                                 mismatches.push({ rowId: rowIndex, reasons: issues, details: currentDetails });
                              }
                          }
                          fullReport.push(reportRow);
@@ -415,33 +414,29 @@ export const TarifValidator: React.FC<TarifValidatorProps> = ({ category }) => {
                         // TARIF LOGIC
                         const keys = Object.keys(itRow);
                         const sysKey = keys.find(k => k.trim().replace(/_/g, '').toUpperCase() === 'SYSCODE');
-                        
                         const sysCode = sysKey ? String(itRow[sysKey] || '').trim().toUpperCase() : '';
 
-                        if (!sysCode) {
-                            return; 
-                        }
+                        if (!sysCode) return; 
 
                         const masterRow = masterMap.get(sysCode);
-                        
                         const findVal = (row: any, keyStart: string) => {
                             if (!row) return '';
                             const key = Object.keys(row).find(k => k.toUpperCase().startsWith(keyStart.toUpperCase()));
                             return key ? row[key] : '';
                         };
 
-                        let tarifIT = 0, slaFormIT = 0, slaThruIT = 0;
-                        let tarifMaster = 0, slaFormMaster = 0, slaThruMaster = 0;
+                        let tarifITValue = 0, slaFormITValue = 0, slaThruITValue = 0;
+                        let tarifMasterValue = 0, slaFormMasterValue = 0, slaThruMasterValue = 0;
 
                         if (itRow) {
-                            tarifIT = parseNum(findVal(itRow, 'TARIF'));
-                            slaFormIT = parseNum(findVal(itRow, 'SLA_FORM'));
-                            slaThruIT = parseNum(findVal(itRow, 'SLA_THRU'));
+                            tarifITValue = parseNum(findVal(itRow, 'TARIF'));
+                            slaFormITValue = parseNum(findVal(itRow, 'SLA_FORM'));
+                            slaThruITValue = parseNum(findVal(itRow, 'SLA_THRU'));
                         }
                         if (masterRow) {
-                            tarifMaster = parseNum(findVal(masterRow, 'Tarif REG') || findVal(masterRow, 'TARIF'));
-                            slaFormMaster = parseNum(findVal(masterRow, 'sla form') || findVal(masterRow, 'SLA_FORM'));
-                            slaThruMaster = parseNum(findVal(masterRow, 'sla thru') || findVal(masterRow, 'SLA_THRU'));
+                            tarifMasterValue = parseNum(findVal(masterRow, 'Tarif REG') || findVal(masterRow, 'TARIF'));
+                            slaFormMasterValue = parseNum(findVal(masterRow, 'sla form') || findVal(masterRow, 'SLA_FORM'));
+                            slaThruMasterValue = parseNum(findVal(masterRow, 'sla thru') || findVal(masterRow, 'SLA_THRU'));
                         }
 
                         const reportRow: FullValidationRow = {
@@ -449,13 +444,13 @@ export const TarifValidator: React.FC<TarifValidatorProps> = ({ category }) => {
                             dest: (itRow ? findVal(itRow, 'DEST') : findVal(masterRow, 'DEST')) || '',
                             sysCode: sysCode || '',
                             serviceMaster: masterRow ? (findVal(masterRow, 'Service REG') || findVal(masterRow, 'SERVICE') || '-') : '-',
-                            tarifMaster: masterRow ? tarifMaster : 0,
-                            slaFormMaster: masterRow ? slaFormMaster : 0,
-                            slaThruMaster: masterRow ? slaThruMaster : 0,
+                            tarifMaster: masterRow ? tarifMasterValue : 0,
+                            slaFormMaster: masterRow ? slaFormMasterValue : 0,
+                            slaThruMaster: masterRow ? slaThruMasterValue : 0,
                             serviceIT: itRow ? (findVal(itRow, 'SERVICE') || '-') : '-',
-                            tarifIT: itRow ? tarifIT : 0,
-                            slaFormIT: itRow ? slaFormIT : 0,
-                            slaThruIT: itRow ? slaThruIT : 0,
+                            tarifIT: itRow ? tarifITValue : 0,
+                            slaFormIT: itRow ? slaFormITValue : 0,
+                            slaThruIT: itRow ? slaThruITValue : 0,
                             keterangan: ''
                         };
 
@@ -465,26 +460,25 @@ export const TarifValidator: React.FC<TarifValidatorProps> = ({ category }) => {
                              mismatches.push({ rowId: rowIndex, reasons: ['Master Data Tidak Ada'], details: [] });
                         } else {
                              const issues: string[] = [];
-                             const detailsArr: ValidationDetail[] = [];
-                             
+                             const currentDetails: ValidationDetail[] = [];
                              const isSame = (val1: string | number, val2: string | number) => 
                                  String(val1).trim().replace(/\s/g,'').toUpperCase() === String(val2).trim().replace(/\s/g,'').toUpperCase();
 
                              if (!isSame(reportRow.serviceIT, reportRow.serviceMaster)) {
                                  issues.push('Service');
-                                 detailsArr.push({ column: 'Service', itValue: reportRow.serviceIT, masterValue: reportRow.serviceMaster, isMatch: false });
+                                 currentDetails.push({ column: 'Service', itValue: reportRow.serviceIT, masterValue: reportRow.serviceMaster, isMatch: false });
                              }
                              if (reportRow.tarifIT !== reportRow.tarifMaster) {
                                  issues.push('Tarif');
-                                 detailsArr.push({ column: 'Tarif', itValue: reportRow.tarifIT, masterValue: reportRow.tarifMaster, isMatch: false });
+                                 currentDetails.push({ column: 'Tarif', itValue: reportRow.tarifIT, masterValue: reportRow.tarifMaster, isMatch: false });
                              }
                              if (reportRow.slaFormIT !== reportRow.slaFormMaster) {
                                  issues.push('SLA_FORM');
-                                 detailsArr.push({ column: 'sla_form', itValue: reportRow.slaFormIT, masterValue: reportRow.slaFormMaster, isMatch: false });
+                                 currentDetails.push({ column: 'sla_form', itValue: reportRow.slaFormIT, masterValue: reportRow.slaFormMaster, isMatch: false });
                              }
                              if (reportRow.slaThruIT !== reportRow.slaThruMaster) {
                                  issues.push('SLA_THRU');
-                                 detailsArr.push({ column: 'sla_thru', itValue: reportRow.slaThruIT, masterValue: reportRow.slaThruMaster, isMatch: false });
+                                 currentDetails.push({ column: 'sla_thru', itValue: reportRow.slaThruIT, masterValue: reportRow.slaThruMaster, isMatch: false });
                              }
 
                              if (issues.length === 0) {
@@ -492,7 +486,7 @@ export const TarifValidator: React.FC<TarifValidatorProps> = ({ category }) => {
                                  matchesCount++;
                              } else {
                                  reportRow.keterangan = `Tidak sesuai : ${issues.join(', ')}`;
-                                 mismatches.push({ rowId: rowIndex, reasons: issues, details: detailsArr });
+                                 mismatches.push({ rowId: rowIndex, reasons: issues, details: currentDetails });
                              }
                         }
                         fullReport.push(reportRow);
@@ -513,7 +507,6 @@ export const TarifValidator: React.FC<TarifValidatorProps> = ({ category }) => {
         setResult(validationResult);
 
         const isTooLarge = fullReport.length > 5000;
-        
         const historyItem: ValidationHistoryItem = {
             id: Date.now().toString(),
             timestamp: new Date().toLocaleString('id-ID'),
@@ -540,29 +533,29 @@ export const TarifValidator: React.FC<TarifValidatorProps> = ({ category }) => {
 
   const getDisplayedRows = useMemo(() => {
       if (!result) return [];
-      let rowsArr: FullValidationRow[] = [];
+      let rowsList: FullValidationRow[] = [];
       
       if (result.totalRows > 0 && result.fullReport.length === 0) {
           return [];
       }
 
-      if (reportFilter === 'ALL') rowsArr = result.fullReport;
-      else if (reportFilter === 'MATCH') rowsArr = result.fullReport.filter(r => r.keterangan === 'Sesuai');
-      else if (reportFilter === 'BLANK') rowsArr = result.fullReport.filter(r => r.keterangan.includes('Tidak Ada'));
-      else if (reportFilter === 'MISMATCH') rowsArr = result.fullReport.filter(r => !r.keterangan.includes('Sesuai') && !r.keterangan.includes('Tidak Ada'));
-      else rowsArr = [];
+      if (reportFilter === 'ALL') rowsList = result.fullReport;
+      else if (reportFilter === 'MATCH') rowsList = result.fullReport.filter(r => r.keterangan === 'Sesuai');
+      else if (reportFilter === 'BLANK') rowsList = result.fullReport.filter(r => r.keterangan.includes('Tidak Ada'));
+      else if (reportFilter === 'MISMATCH') rowsList = result.fullReport.filter(r => !r.keterangan.includes('Sesuai') && !r.keterangan.includes('Tidak Ada'));
+      else rowsList = [];
       
-      return rowsArr;
+      return rowsList;
   }, [result, reportFilter]);
 
-  const totalPages = Math.ceil(getDisplayedRows.length / ROWS_PER_PAGE);
-  const paginatedRows = useMemo(() => {
-      const start = (currentPage - 1) * ROWS_PER_PAGE;
-      return getDisplayedRows.slice(start, start + ROWS_PER_PAGE);
+  const totalPagesCount = Math.ceil(getDisplayedRows.length / ROWS_PER_PAGE);
+  const paginatedRowsList = useMemo(() => {
+      const startIndex = (currentPage - 1) * ROWS_PER_PAGE;
+      return getDisplayedRows.slice(startIndex, startIndex + ROWS_PER_PAGE);
   }, [getDisplayedRows, currentPage]);
 
   const handlePageChange = (newPage: number) => {
-      if(newPage >= 1 && newPage <= totalPages) setCurrentPage(newPage);
+      if(newPage >= 1 && newPage <= totalPagesCount) setCurrentPage(newPage);
   };
 
   const clearHistory = () => {
@@ -572,11 +565,9 @@ export const TarifValidator: React.FC<TarifValidatorProps> = ({ category }) => {
   const restoreFromHistory = (item: ValidationHistoryItem) => {
       setResult(item.result);
       setFileIT(null); setFileMaster(null);
-      
       if (item.result.totalRows > 0 && item.result.fullReport.length === 0) {
           alert("Detail data untuk validasi ini tidak tersimpan karena ukurannya terlalu besar. Hanya ringkasan statistik yang tersedia.");
       }
-      
       window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
@@ -871,8 +862,8 @@ export const TarifValidator: React.FC<TarifValidatorProps> = ({ category }) => {
                             </tr>
                         </thead>
                         <tbody className="divide-y divide-slate-100">
-                            {paginatedRows.length > 0 ? (
-                                paginatedRows.map((row, idx) => (
+                            {paginatedRowsList.length > 0 ? (
+                                paginatedRowsList.map((row, idx) => (
                                     <tr key={idx} className="hover:bg-blue-50 transition">
                                         <td className="px-2 py-2 border-r border-slate-100">{row.origin}</td>
                                         <td className="px-2 py-2 border-r border-slate-100">{row.dest}</td>
@@ -922,14 +913,14 @@ export const TarifValidator: React.FC<TarifValidatorProps> = ({ category }) => {
                     )}
                 </div>
 
-                {totalPages > 0 && (
+                {totalPagesCount > 0 && (
                 <div className="p-4 border-t border-slate-200 bg-white flex justify-between items-center flex-shrink-0">
-                    <p className="text-sm text-slate-500">Page {currentPage} of {totalPages}</p>
+                    <p className="text-sm text-slate-500">Page {currentPage} of {totalPagesCount}</p>
                     <div className="flex gap-2">
                         <button disabled={currentPage === 1} onClick={() => handlePageChange(currentPage - 1)} className="p-2 border rounded hover:bg-slate-50 disabled:opacity-50">
                             <ChevronLeft size={16} />
                         </button>
-                        <button disabled={currentPage === totalPages} onClick={() => handlePageChange(currentPage + 1)} className="p-2 border rounded hover:bg-slate-50 disabled:opacity-50">
+                        <button disabled={currentPage === totalPagesCount} onClick={() => handlePageChange(currentPage + 1)} className="p-2 border rounded hover:bg-slate-50 disabled:opacity-50">
                             <ChevronRight size={16} />
                         </button>
                     </div>
