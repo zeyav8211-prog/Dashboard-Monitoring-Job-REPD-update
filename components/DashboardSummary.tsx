@@ -1,6 +1,5 @@
-
 import React, { useMemo, useState } from 'react';
-import { Job, Status } from '../types';
+import { Job } from '../types';
 import { MENU_STRUCTURE } from '../constants';
 import { 
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, 
