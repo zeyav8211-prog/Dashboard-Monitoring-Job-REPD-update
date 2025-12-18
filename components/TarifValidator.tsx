@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useMemo } from 'react';
 import { Upload, FileUp, AlertTriangle, CheckCircle2, Download, Eye, X, Table as TableIcon, History, RotateCcw, Trash2, HelpCircle, ChevronLeft, ChevronRight } from 'lucide-react';
 import { ValidationResult, ValidationMismatch, FullValidationRow, ValidationDetail, ValidationHistoryItem, ValidationCategory } from '../types';
@@ -109,11 +110,10 @@ export const TarifValidator: React.FC<TarifValidatorProps> = ({ category }) => {
     
     const data = rowsToDownload || result.fullReport;
     
-    // Explicit types to fix TS7034/TS7005
-    let header: string = '';
-    let rows: string[] = [];
+    let csvHeader: string = '';
+    let csvRows: string[] = [];
 
-    const esc = (val: any) => {
+    const esc = (val: any): string => {
         const str = String(val === undefined || val === null ? '' : val);
         if (str.includes(',') || str.includes('"') || str.includes('\n')) {
             return `"${str.replace(/"/g, '""')}"`;
@@ -122,26 +122,26 @@ export const TarifValidator: React.FC<TarifValidatorProps> = ({ category }) => {
     };
 
     if (category === 'TARIF') {
-        header = [
+        csvHeader = [
             'ORIGIN', 'DEST', 'SYS_CODE', 
             'Service REG', 'Tarif REG', 'sla form REG', 'sla thru REG', 
             'SERVICE', 'TARIF', 'SLA_FORM', 'SLA_THRU', 'Keterangan'
         ].join(',');
 
-        rows = data.map(row => [
+        csvRows = data.map(row => [
             esc(row.origin), esc(row.dest), esc(row.sysCode),
             esc(row.serviceMaster), esc(row.tarifMaster), esc(row.slaFormMaster), esc(row.slaThruMaster),
             esc(row.serviceIT), esc(row.tarifIT), esc(row.slaFormIT), esc(row.slaThruIT),
             esc(row.keterangan)
         ].join(','));
     } else {
-        header = [
+        csvHeader = [
             'ORIGIN', 'DESTINASI', 'SERVICE', 'ACUAN SERVICE',
             'BP Master', 'BP Next Master', 'BT Master', 'BD Master', 'BD Next Master', 
             'BP IT', 'BP Next IT', 'BT IT', 'BD IT', 'BD Next IT', 'Keterangan'
         ].join(',');
 
-        rows = data.map(row => [
+        csvRows = data.map(row => [
             esc(row.origin), esc(row.dest), esc(row.serviceIT), esc(row.serviceMaster), 
             esc(row.bpMaster), esc(row.bpNextMaster), esc(row.btMaster), esc(row.bdMaster), esc(row.bdNextMaster),
             esc(row.bpIT), esc(row.bpNextIT), esc(row.btIT), esc(row.bdIT), esc(row.bdNextIT),
@@ -149,7 +149,7 @@ export const TarifValidator: React.FC<TarifValidatorProps> = ({ category }) => {
         ].join(','));
     }
 
-    const content = [header, ...rows].join('\n');
+    const content = [csvHeader, ...csvRows].join('\n');
     const blob = new Blob([content], { type: 'text/csv' });
     const url = window.URL.createObjectURL(blob);
     const a = document.createElement('a');
@@ -268,7 +268,7 @@ export const TarifValidator: React.FC<TarifValidatorProps> = ({ category }) => {
         await processFileChunked(
             fileMaster,
             () => {}, 
-            (rows: any[]) => { // Explicit type
+            (rows: any[]) => {
                 if (category === 'BIAYA') {
                     const keys = Object.keys(rows[0] || {});
                     const destKey = keys.find(k => k.toUpperCase().includes('DEST')) || 'DESTINASI';
@@ -319,7 +319,7 @@ export const TarifValidator: React.FC<TarifValidatorProps> = ({ category }) => {
 
         await processFileChunked(
             fileIT,
-            (headers: string[]) => { // Explicit type
+            (headers: string[]) => {
                  if (category === 'BIAYA') {
                      const hasDest = headers.some(h => h.toUpperCase().includes('DEST'));
                      const hasServ = headers.some(h => h.toUpperCase().includes('SERVICE'));
@@ -329,7 +329,7 @@ export const TarifValidator: React.FC<TarifValidatorProps> = ({ category }) => {
                      if (!hasSys) throw new Error("File IT harus memiliki kolom SYS_CODE");
                  }
             },
-            (rows: any[]) => { // Explicit type
+            (rows: any[]) => {
                 rows.forEach((itRow) => {
                     rowIndexGlobal++;
                     const rowIndex = rowIndexGlobal;
@@ -510,7 +510,6 @@ export const TarifValidator: React.FC<TarifValidatorProps> = ({ category }) => {
         };
         setResult(validationResult);
 
-        // --- SAFE HISTORY STORAGE ---
         const isTooLarge = fullReport.length > 5000;
         
         const historyItem: ValidationHistoryItem = {
@@ -520,7 +519,6 @@ export const TarifValidator: React.FC<TarifValidatorProps> = ({ category }) => {
             fileNameMaster: fileMaster.name,
             result: {
                 ...validationResult,
-                // If large, DO NOT store arrays to prevent LocalStorage Quota Exceeded
                 fullReport: isTooLarge ? [] : fullReport, 
                 mismatches: isTooLarge ? [] : mismatches 
             },
