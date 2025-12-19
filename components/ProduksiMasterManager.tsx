@@ -1,7 +1,6 @@
-
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useRef } from 'react';
 import { Job, Status, User } from '../types';
-import { Plus, Pencil, Search, CheckSquare, Square, X, Database, Calendar, Clock } from 'lucide-react';
+import { Plus, Pencil, Search, CheckSquare, Square, X, Database, Calendar, Clock, FileType, Upload, Download } from 'lucide-react';
 
 interface ProduksiMasterManagerProps {
   category: string;
@@ -11,14 +10,16 @@ interface ProduksiMasterManagerProps {
   onUpdateJob: (id: string, updates: Partial<Job>) => void;
   onDeleteJob: (id: string) => void;
   currentUser: User;
+  onBulkAddJobs?: (jobs: Job[]) => void;
 }
 
 export const ProduksiMasterManager: React.FC<ProduksiMasterManagerProps> = ({
-  category, subCategory, jobs, onAddJob, onUpdateJob, onDeleteJob, currentUser
+  category, subCategory, jobs, onAddJob, onUpdateJob, onDeleteJob, currentUser, onBulkAddJobs
 }) => {
   const [view, setView] = useState<'list' | 'form'>('list');
   const [searchTerm, setSearchTerm] = useState('');
   const [editingId, setEditingId] = useState<string | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const [formData, setFormData] = useState<Partial<Job>>({
     status: 'Pending',
@@ -108,6 +109,53 @@ export const ProduksiMasterManager: React.FC<ProduksiMasterManagerProps> = ({
       });
   };
 
+  const handleDownloadTemplate = () => {
+    const headers = ["TGL_INPUT", "CABANG_DEPT", "NAMA_PEKERJAAN", "TGL_AKTIFASI", "TGL_DEADLINE", "STATUS", "KETERANGAN"];
+    const today = new Date().toISOString().split('T')[0];
+    const example = [today, "JAKARTA", "Master Data Contoh", today, today, "Pending", "Catatan Master Data"].join(",");
+    const csvContent = headers.join(",") + "\n" + example;
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.setAttribute("href", url);
+    link.setAttribute("download", `Template_Produksi_Master_${subCategory.replace(/\s+/g, '_')}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
+  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (event) => {
+        const text = event.target?.result as string;
+        const lines = text.split(/\r\n|\n/);
+        const newJobs: Job[] = [];
+        for (let i = 1; i < lines.length; i++) {
+            if (!lines[i].trim()) continue;
+            const cols = lines[i].split(/,|;/).map(v => v.trim().replace(/^"|"$/g, ''));
+            if (cols.length < 3) continue;
+            newJobs.push({
+                id: crypto.randomUUID(),
+                category,
+                subCategory,
+                createdBy: currentUser.email,
+                dateInput: cols[0],
+                branchDept: cols[1],
+                jobType: cols[2],
+                activationDate: cols[3],
+                deadline: cols[4],
+                status: (cols[5] as Status) || 'Pending',
+                keterangan: cols[6] || ''
+            });
+        }
+        if (newJobs.length > 0) onBulkAddJobs?.(newJobs);
+        if (fileInputRef.current) fileInputRef.current.value = '';
+    };
+    reader.readAsText(file);
+  };
+
   return (
     <div className="bg-white rounded-[2.5rem] shadow-xl border border-gray-100 min-h-[600px] flex flex-col overflow-hidden animate-in fade-in duration-500">
       <div className="p-8 border-b border-gray-100 flex flex-col md:flex-row justify-between items-start md:items-center gap-4 bg-gray-50/50">
@@ -116,11 +164,22 @@ export const ProduksiMasterManager: React.FC<ProduksiMasterManagerProps> = ({
           <p className="text-[10px] text-gray-400 font-bold uppercase tracking-widest mt-1">{subCategory}</p>
         </div>
         
-        {view === 'list' && (
-          <button onClick={() => setView('form')} className="px-8 py-3 bg-[#EE2E24] text-white rounded-2xl hover:bg-red-700 text-xs font-black uppercase shadow-lg shadow-red-100 transition-all active:scale-95 flex items-center gap-2">
-            <Plus size={18} /> Input Data Master
-          </button>
-        )}
+        <div className="flex flex-wrap items-center gap-2">
+            {view === 'list' && (
+                <>
+                    <button onClick={handleDownloadTemplate} title="Download Template CSV" className="p-3 bg-white text-gray-400 border border-gray-100 rounded-xl hover:text-blue-600 transition-all">
+                        <FileType size={18} />
+                    </button>
+                    <input type="file" ref={fileInputRef} className="hidden" accept=".csv" onChange={handleFileUpload} />
+                    <button onClick={() => fileInputRef.current?.click()} title="Import Data CSV" className="p-3 bg-white text-gray-400 border border-gray-100 rounded-xl hover:text-orange-600 transition-all">
+                        <Upload size={18} />
+                    </button>
+                    <button onClick={() => setView('form')} className="px-8 py-3 bg-[#EE2E24] text-white rounded-2xl hover:bg-red-700 text-xs font-black uppercase shadow-lg shadow-red-100 transition-all active:scale-95 flex items-center gap-2 ml-2">
+                        <Plus size={18} /> Input Data Master
+                    </button>
+                </>
+            )}
+        </div>
       </div>
 
       <div className="p-8 flex-1">
@@ -148,7 +207,6 @@ export const ProduksiMasterManager: React.FC<ProduksiMasterManagerProps> = ({
                   <input type="text" required placeholder="Deskripsi master data yang diproduksi..." className="w-full px-5 py-3.5 bg-gray-50 border border-gray-200 rounded-2xl focus:ring-4 focus:ring-red-50 transition-all font-bold text-gray-700" value={formData.jobType} onChange={e => setFormData({...formData, jobType: e.target.value})} />
                 </div>
 
-                {/* Section Baru: Tanggal Aktifasi & Deadline */}
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6 md:col-span-2">
                   <div>
                     <label className="block text-xs font-black text-[#EE2E24] uppercase tracking-widest mb-2 flex items-center gap-2">
@@ -164,7 +222,6 @@ export const ProduksiMasterManager: React.FC<ProduksiMasterManagerProps> = ({
                   </div>
                 </div>
 
-                {/* Section Baru: Sumber Data Master */}
                 <div className="md:col-span-2 p-8 bg-blue-50/50 rounded-[2.5rem] border border-blue-100 space-y-6">
                     <div className="flex items-center gap-3">
                         <Database size={18} className="text-[#002F6C]" />
