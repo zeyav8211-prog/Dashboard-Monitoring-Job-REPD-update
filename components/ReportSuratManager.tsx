@@ -17,7 +17,7 @@ interface ReportSuratManagerProps {
   onUpdateJob: (id: string, updates: Partial<Job>) => void;
   onDeleteJob: (id: string) => void;
   onDeleteCancelled: () => void;
-  onBulkAddJobs?: (jobs: Job[]) => void;
+  onBulkAddJobs: (jobs: Job[]) => void;
   currentUser: User;
 }
 
@@ -31,7 +31,6 @@ export const ReportSuratManager: React.FC<ReportSuratManagerProps> = ({
   const [editingId, setEditingId] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // Form State
   const [formData, setFormData] = useState<Partial<Job>>({
     status: 'Pending',
     dateInput: new Date().toISOString().split('T')[0],
@@ -143,12 +142,17 @@ export const ReportSuratManager: React.FC<ReportSuratManagerProps> = ({
         const text = event.target?.result as string;
         const lines = text.split(/\r\n|\n/);
         const newJobs: Job[] = [];
+        
+        if (lines.length < 2) return;
+
+        const firstLine = lines[0];
+        const delimiter = firstLine.includes(';') ? ';' : ',';
+
         for (let i = 1; i < lines.length; i++) {
             if (!lines[i].trim()) continue;
-            const cols = lines[i].split(/,|;/).map(v => v.trim().replace(/^"|"$/g, ''));
+            const cols = lines[i].split(delimiter).map(v => v.trim().replace(/^"|"$/g, ''));
             if (cols.length < 3) continue;
             
-            // Map columns based on subCategory for more accurate import
             let job: Partial<Job> = {
                 id: crypto.randomUUID(),
                 category: "Report Surat",
@@ -172,6 +176,14 @@ export const ReportSuratManager: React.FC<ReportSuratManagerProps> = ({
                 job.keterangan = cols[6];
                 job.deadline = cols[7];
                 job.customData = { nomorSurat: cols[2], klasifikasi: cols[3] };
+            } else if (subCategory === 'Internal Memo') {
+                job.dateInput = cols[0];
+                job.branchDept = cols[1];
+                job.jobType = cols[3];
+                job.status = (cols[5] as Status) || 'Pending';
+                job.activationDate = cols[4];
+                job.keterangan = cols[6];
+                job.customData = { nomorSurat: cols[2] };
             } else {
                 job.dateInput = cols[0];
                 job.branchDept = cols[1];
@@ -182,7 +194,14 @@ export const ReportSuratManager: React.FC<ReportSuratManagerProps> = ({
             }
             newJobs.push(job as Job);
         }
-        if (newJobs.length > 0) onBulkAddJobs?.(newJobs);
+        
+        if (newJobs.length > 0) {
+            onBulkAddJobs(newJobs);
+            alert(`Berhasil mengimport ${newJobs.length} data surat.`);
+        } else {
+            alert("Tidak ada data valid yang ditemukan.");
+        }
+        
         if (fileInputRef.current) fileInputRef.current.value = '';
     };
     reader.readAsText(file);
