@@ -6,24 +6,15 @@ import { JobManager } from './components/JobManager';
 import { Login } from './components/Login';
 import { TarifValidator } from './components/TarifValidator';
 import { ReportSuratManager } from './components/ReportSuratManager';
-import { ProduksiMasterManager } from './components/ProduksiMasterManager';
 import { CompetitorManager } from './components/CompetitorManager';
 import { Job, User, ValidationLog } from './types';
 import { AUTHORIZED_USERS } from './constants';
-import { driveApi } from './services/driveApi';
-import { api as jsonBinApi } from './services/api';
-import { WifiOff } from 'lucide-react';
-
-type StorageProvider = 'GAS' | 'JSONBIN' | 'BOTH';
+import { api } from './services/api';
 
 function App() {
   const [currentUser, setCurrentUser] = useState<User | null>(() => {
     const saved = localStorage.getItem('jne_current_user');
     return saved ? JSON.parse(saved) : null;
-  });
-
-  const [storageProvider, setStorageProvider] = useState<StorageProvider>(() => {
-    return (localStorage.getItem('jne_storage_provider') as StorageProvider) || 'GAS';
   });
 
   const [jobs, setJobs] = useState<Job[]>([]);
@@ -38,61 +29,34 @@ function App() {
   const [connectionError, setConnectionError] = useState(false);
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
 
-  const mergeDatasets = (gasData: any, binData: any) => {
-    const jobMap = new Map<string, Job>();
-    const gasJobs = Array.isArray(gasData?.jobs) ? gasData.jobs : [];
-    const binJobs = Array.isArray(binData?.jobs) ? binData.jobs : [];
-    [...gasJobs, ...binJobs].forEach((j: Job) => { if (j && j.id) jobMap.set(j.id, j); });
-
-    const logMap = new Map<string, ValidationLog>();
-    const gasLogs = Array.isArray(gasData?.validationLogs) ? gasData.validationLogs : [];
-    const binLogs = Array.isArray(binData?.validationLogs) ? binData.validationLogs : [];
-    [...gasLogs, ...binLogs].forEach((l: ValidationLog) => { if (l && l.id) logMap.set(l.id, l); });
-
-    const userMap = new Map<string, User>();
-    const gasUsers = Array.isArray(gasData?.users) ? gasData.users : [];
-    const binUsers = Array.isArray(binData?.users) ? binData.users : [];
-    [...gasUsers, ...binUsers].forEach((u: User) => { if (u && u.email) userMap.set(u.email.toLowerCase(), u); });
-
-    return {
-      jobs: Array.from(jobMap.values()),
-      validationLogs: Array.from(logMap.values()).sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()),
-      users: Array.from(userMap.values())
-    };
-  };
-
   const fetchData = useCallback(async () => {
     if (isSaving) return;
-    try {
-      let finalData: { jobs: Job[], validationLogs: ValidationLog[], users: User[] } | null = null;
-      if (storageProvider === 'BOTH') {
-        const [gasRes, binRes] = await Promise.allSettled([driveApi.getData(), jsonBinApi.getData()]);
-        const gasData = gasRes.status === 'fulfilled' ? gasRes.value : null;
-        const binData = binRes.status === 'fulfilled' ? binRes.value : null;
-        if (!gasData && !binData) throw new Error("Connection failed");
-        finalData = mergeDatasets(gasData, binData);
-      } else {
-        const api = storageProvider === 'GAS' ? driveApi : jsonBinApi;
-        const data = await api.getData();
-        if (data) {
-          finalData = {
-            jobs: Array.isArray(data.jobs) ? data.jobs : [],
-            validationLogs: Array.isArray(data.validationLogs) ? data.validationLogs : [],
-            users: Array.isArray(data.users) ? data.users : []
-          };
-        }
-      }
 
-      if (finalData) {
-        setJobs(finalData.jobs);
-        setValidationLogs(finalData.validationLogs);
-        const mergedUsers = AUTHORIZED_USERS.map(defaultUser => {
-            const cloudUser = finalData!.users.find((u: User) => u.email.toLowerCase() === defaultUser.email.toLowerCase());
-            return { ...defaultUser, password: cloudUser ? cloudUser.password : defaultUser.password };
-        });
-        setUsers(mergedUsers);
-        setLastUpdated(new Date());
+    try {
+      const data = await api.getData();
+      if (data) {
         setConnectionError(false);
+        
+        if (data.jobs && Array.isArray(data.jobs)) {
+            setJobs(data.jobs);
+        }
+
+        if (data.validationLogs && Array.isArray(data.validationLogs)) {
+            setValidationLogs(data.validationLogs);
+        }
+
+        if (data.users && Array.isArray(data.users)) {
+            const mergedUsers = AUTHORIZED_USERS.map(defaultUser => {
+                const cloudUser = data.users.find((u: User) => u.email === defaultUser.email);
+                return {
+                    ...defaultUser, 
+                    password: cloudUser ? cloudUser.password : defaultUser.password
+                };
+            });
+            setUsers(mergedUsers);
+        }
+        
+        setLastUpdated(new Date());
       }
     } catch (error) {
       console.error("Fetch error:", error);
@@ -100,148 +64,282 @@ function App() {
     } finally {
       setIsLoading(false);
     }
-  }, [isSaving, storageProvider]);
+  }, [isSaving]);
 
   useEffect(() => {
-    fetchData();
-    const interval = setInterval(fetchData, 45000); // 45s interval
-    return () => clearInterval(interval);
+    fetchData(); 
+    const intervalId = setInterval(() => {
+        fetchData();
+    }, 5000); 
+    return () => clearInterval(intervalId);
   }, [fetchData]);
 
   const saveToCloud = async (newJobs: Job[], newUsers: User[], newLogs: ValidationLog[]) => {
     setIsSaving(true);
-    const payload = { jobs: newJobs, users: newUsers, validationLogs: newLogs };
+    setJobs(newJobs);
+    setUsers(newUsers);
+    setValidationLogs(newLogs);
+
     try {
-        let success = false;
-        if (storageProvider === 'BOTH') {
-            const [gasRes, binRes] = await Promise.allSettled([driveApi.saveData(payload), jsonBinApi.saveData(payload)]);
-            success = (gasRes.status === 'fulfilled' && gasRes.value) || (binRes.status === 'fulfilled' && binRes.value);
-        } else {
-            const api = storageProvider === 'GAS' ? driveApi : jsonBinApi;
-            success = await api.saveData(payload);
-        }
+        const success = await api.saveData({
+            jobs: newJobs,
+            users: newUsers,
+            validationLogs: newLogs
+        });
+        
         if (success) {
             setLastUpdated(new Date());
             setConnectionError(false);
         } else {
             setConnectionError(true);
+            alert("Gagal menyimpan ke server. Data tersimpan sementara di aplikasi tetapi belum masuk ke Database Pusat.");
         }
     } catch (error) {
+        console.error(error);
         setConnectionError(true);
     } finally {
         setIsSaving(false);
     }
   };
 
-  const handleProviderChange = (newProvider: StorageProvider) => {
-    setStorageProvider(newProvider);
-    localStorage.setItem('jne_storage_provider', newProvider);
-    setIsLoading(true);
-    fetchData();
+  useEffect(() => {
+    if (currentUser) {
+      localStorage.setItem('jne_current_user', JSON.stringify(currentUser));
+      const freshUser = users.find(u => u.email === currentUser.email);
+      if (freshUser && freshUser.password !== currentUser.password) {
+        setCurrentUser(freshUser);
+      }
+    } else {
+      localStorage.removeItem('jne_current_user');
+    }
+  }, [currentUser, users]);
+
+  const createLog = (action: ValidationLog['action'], description: string, category?: string): ValidationLog => {
+      return {
+          id: crypto.randomUUID(),
+          timestamp: new Date().toISOString(),
+          user: currentUser?.name || 'Unknown',
+          action,
+          description,
+          category
+      };
   };
 
-  const createLog = (action: ValidationLog['action'], description: string, category?: string): ValidationLog => ({
-      id: crypto.randomUUID(),
-      timestamp: new Date().toISOString(),
-      user: currentUser?.name || 'Unknown',
-      action,
-      description,
-      category
-  });
+  const handleLogin = (user: User) => {
+    const freshUserData = users.find(u => u.email === user.email) || user;
+    setCurrentUser(freshUserData);
+  };
+
+  const handleResetPassword = async (email: string) => {
+    const targetUser = users.find(u => u.email.toLowerCase() === email.toLowerCase());
+    
+    if (targetUser) {
+        const defaultPassword = "000000";
+        const updatedUser = { ...targetUser, password: defaultPassword };
+        const updatedUserList = users.map(u => u.email === targetUser.email ? updatedUser : u);
+        
+        const newLog: ValidationLog = {
+            id: crypto.randomUUID(),
+            timestamp: new Date().toISOString(),
+            user: 'System',
+            action: 'RESET_PASSWORD',
+            description: `Reset password for user ${targetUser.email}`
+        };
+        const updatedLogs = [newLog, ...validationLogs];
+
+        await saveToCloud(jobs, updatedUserList, updatedLogs);
+        return true;
+    }
+    return false;
+  };
+
+  const handleLogout = () => {
+    setCurrentUser(null);
+    setActiveCategory(null);
+    setActiveSubCategory(null);
+  };
+
+  const handleChangePassword = (oldPass: string, newPass: string) => {
+    if (!currentUser) return false;
+    const actualUser = users.find(u => u.email === currentUser.email) || currentUser;
+    if (actualUser.password !== oldPass) return false;
+
+    const updatedUser = { ...actualUser, password: newPass };
+    const updatedUserList = users.map(u => u.email === actualUser.email ? updatedUser : u);
+    
+    saveToCloud(jobs, updatedUserList, validationLogs);
+    setCurrentUser(updatedUser);
+    return true;
+  };
+
+  const handleNavigate = (cat: string | null, sub: string | null) => {
+    setActiveCategory(cat);
+    setActiveSubCategory(sub);
+  };
 
   const handleAddJob = (job: Job) => {
     const newJobs = [job, ...jobs];
-    const newLog = createLog('CREATE', `Tambah: ${job.jobType}`, job.category);
+    const newLog = createLog('CREATE', `Menambahkan pekerjaan baru: ${job.jobType} di ${job.branchDept}`, job.category);
     saveToCloud(newJobs, users, [newLog, ...validationLogs]);
   };
 
   const handleUpdateJob = (id: string, updates: Partial<Job>) => {
     const oldJob = jobs.find(j => j.id === id);
     const newJobs = jobs.map(j => j.id === id ? { ...j, ...updates } : j);
-    const newLog = createLog('UPDATE', `Update: ${oldJob?.jobType}`, oldJob?.category);
+    
+    let desc = `Update data pekerjaan`;
+    if (oldJob) {
+        if (updates.status && updates.status !== oldJob.status) {
+            desc = `Mengubah status: ${oldJob.jobType} (${oldJob.branchDept}) dari ${oldJob.status} menjadi ${updates.status}`;
+        } else if (updates.deadline && updates.deadline !== oldJob.deadline) {
+            desc = `Mengubah dateline: ${oldJob.jobType} (${oldJob.branchDept}) menjadi ${updates.deadline}`;
+        } else {
+             desc = `Mengedit detail pekerjaan: ${oldJob.jobType} (${oldJob.branchDept})`;
+        }
+    }
+
+    const newLog = createLog('UPDATE', desc, oldJob?.category);
     saveToCloud(newJobs, users, [newLog, ...validationLogs]);
   };
 
   const handleDeleteJob = (id: string) => {
-    if (confirm("Hapus data ini?")) {
+    if (confirm("Apakah anda yakin ingin menghapus data ini?")) {
       const jobToDelete = jobs.find(j => j.id === id);
       const newJobs = jobs.filter(j => j.id !== id);
-      const newLog = createLog('DELETE', `Hapus: ${jobToDelete?.jobType}`, jobToDelete?.category);
+      
+      const newLog = createLog('DELETE', `Menghapus pekerjaan: ${jobToDelete?.jobType} (${jobToDelete?.branchDept})`, jobToDelete?.category);
       saveToCloud(newJobs, users, [newLog, ...validationLogs]);
     }
   };
 
+  const handleDeleteCancelledJobs = (cat: string, sub: string) => {
+      const jobsToDelete = jobs.filter(j => j.category === cat && j.subCategory === sub && (j.status === 'Cancel' || j.status === 'Drop'));
+      if (jobsToDelete.length === 0) return;
+
+      if (confirm(`Apakah anda yakin ingin menghapus SEMUA data (${jobsToDelete.length} item) dengan status 'Cancel' atau 'Drop' di kategori ini?`)) {
+          const newJobs = jobs.filter(j => !(j.category === cat && j.subCategory === sub && (j.status === 'Cancel' || j.status === 'Drop')));
+          const newLog = createLog('DELETE', `Membersihkan ${jobsToDelete.length} data Cancel/Drop di ${cat} - ${sub}`, cat);
+          saveToCloud(newJobs, users, [newLog, ...validationLogs]);
+      }
+  };
+
   const handleBulkAdd = (addedJobs: Job[]) => {
     const newJobs = [...addedJobs, ...jobs];
-    const newLog = createLog('BULK_IMPORT', `Import ${addedJobs.length} data`, addedJobs[0]?.category);
+    const newLog = createLog('BULK_IMPORT', `Import masal ${addedJobs.length} data pekerjaan`, addedJobs[0]?.category);
     saveToCloud(newJobs, users, [newLog, ...validationLogs]);
   };
 
+  // Visibility Logic: 
+  // User can only see jobs they created, unless they are Admin.
   const visibleJobs = useMemo(() => {
     if (!currentUser) return [];
-    const actualUser = users.find(u => u.email.toLowerCase() === currentUser.email.toLowerCase());
-    if (actualUser?.role === 'Admin') return jobs;
-    return jobs.filter(job => !job.createdBy || job.createdBy.toLowerCase() === currentUser.email.toLowerCase());
+    const userRole = users.find(u => u.email === currentUser.email)?.role || currentUser.role;
+
+    if (userRole === 'Admin') {
+        return jobs;
+    }
+
+    return jobs.filter(job => 
+        job.createdBy === currentUser.email
+    );
   }, [jobs, currentUser, users]);
 
-  if (!currentUser) return <Login onLogin={setCurrentUser} users={users} onResetPassword={async () => false} />;
+  if (!currentUser) {
+    return (
+        <Login 
+            onLogin={handleLogin} 
+            users={users} 
+            onResetPassword={handleResetPassword}
+        />
+    );
+  }
+
+  const renderContent = () => {
+      if (activeCategory === 'Validasi') {
+          if (activeSubCategory === 'Biaya Validasi') {
+             return <TarifValidator category="BIAYA" />;
+          }
+          return <TarifValidator category="TARIF" />;
+      }
+
+      if (activeCategory === 'Kompetitor' && activeSubCategory) {
+          return (
+              <CompetitorManager 
+                  subCategory={activeSubCategory}
+                  currentUser={currentUser}
+              />
+          );
+      }
+      
+      if (activeCategory === 'Report Surat' && activeSubCategory) {
+          return (
+              <ReportSuratManager 
+                 subCategory={activeSubCategory}
+                 jobs={visibleJobs}
+                 onAddJob={handleAddJob}
+                 onUpdateJob={handleUpdateJob}
+                 onDeleteJob={handleDeleteJob}
+                 onDeleteCancelled={() => handleDeleteCancelledJobs("Report Surat", activeSubCategory)}
+                 onBulkAddJobs={handleBulkAdd}
+                 currentUser={currentUser}
+              />
+          );
+      }
+      
+      if (!activeCategory) {
+          return (
+            <DashboardSummary 
+                jobs={visibleJobs} 
+                onBulkAddJobs={handleBulkAdd}
+                onUpdateJob={handleUpdateJob}
+                onDeleteJob={handleDeleteJob}
+                isLoading={isLoading}
+                isSaving={isSaving}
+                lastUpdated={lastUpdated}
+                connectionError={connectionError}
+            />
+          );
+      }
+
+      if (activeSubCategory) {
+          return (
+            <JobManager 
+                category={activeCategory}
+                subCategory={activeSubCategory}
+                jobs={visibleJobs}
+                onAddJob={handleAddJob}
+                onUpdateJob={handleUpdateJob}
+                onDeleteJob={handleDeleteJob}
+                onDeleteCancelled={() => handleDeleteCancelledJobs(activeCategory, activeSubCategory)}
+                onBulkAddJobs={handleBulkAdd}
+                currentUser={currentUser}
+            />
+          );
+      }
+
+      return null;
+  };
 
   return (
     <Layout 
       activeCategory={activeCategory} 
       activeSubCategory={activeSubCategory} 
-      onNavigate={(cat, sub) => { setActiveCategory(cat); setActiveSubCategory(sub); }}
+      onNavigate={handleNavigate}
       user={currentUser}
-      onLogout={() => {
-        setCurrentUser(null);
-        localStorage.removeItem('jne_current_user');
-      }}
-      onChangePassword={() => false}
+      onLogout={handleLogout}
+      onChangePassword={handleChangePassword}
     >
       {connectionError && (
-        <div className="mb-4 bg-red-100 border border-red-400 text-red-700 px-4 py-2 rounded flex items-center gap-2 animate-pulse">
-          <WifiOff size={16} /> <strong>Koneksi Error:</strong> Gagal sinkronisasi dengan {storageProvider}.
+        <div className="mb-4 bg-red-100 border border-red-400 text-red-700 px-4 py-2 rounded relative animate-pulse">
+          <strong className="font-bold">Mode Offline: </strong>
+          <span className="block sm:inline">Gagal terhubung ke Database. Cek internet Anda.</span>
         </div>
       )}
-      
-      {activeCategory === 'Validasi' ? <TarifValidator category={activeSubCategory === 'Biaya Validasi' ? 'BIAYA' : 'TARIF'} /> :
-       activeCategory === 'Kompetitor' ? <CompetitorManager subCategory={activeSubCategory || ''} currentUser={currentUser} /> :
-       activeCategory === 'Report Surat' ? (
-         <ReportSuratManager 
-           subCategory={activeSubCategory || 'Summary'} 
-           jobs={visibleJobs} 
-           onAddJob={handleAddJob} 
-           onUpdateJob={handleUpdateJob} 
-           onDeleteJob={handleDeleteJob} 
-           onDeleteCancelled={() => {}} 
-           onBulkAddJobs={handleBulkAdd}
-           currentUser={currentUser} 
-         />
-       ) :
-       activeCategory === 'Produksi Master Data' ? (
-         <ProduksiMasterManager
-           category={activeCategory}
-           subCategory={activeSubCategory || ''}
-           jobs={visibleJobs}
-           onAddJob={handleAddJob}
-           onUpdateJob={handleUpdateJob}
-           onDeleteJob={handleDeleteJob}
-           currentUser={currentUser}
-         />
-       ) :
-       activeCategory ? <JobManager category={activeCategory} subCategory={activeSubCategory || ''} jobs={visibleJobs} onAddJob={handleAddJob} onUpdateJob={handleUpdateJob} onDeleteJob={handleDeleteJob} onDeleteCancelled={() => {}} onBulkAddJobs={handleBulkAdd} currentUser={currentUser} /> :
-       <DashboardSummary 
-          jobs={visibleJobs} 
-          allJobs={jobs} // Pass full jobs for global summary stats
-          onDeleteJob={handleDeleteJob} 
-          isLoading={isLoading} 
-          isSaving={isSaving} 
-          storageProvider={storageProvider}
-          onProviderChange={handleProviderChange}
-          onForceSync={fetchData}
-        />
-      }
+
+      {renderContent()}
+
     </Layout>
   );
 }
+
 export default App;
