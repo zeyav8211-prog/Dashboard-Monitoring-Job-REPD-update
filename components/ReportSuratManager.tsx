@@ -1,4 +1,3 @@
-
 import React, { useState, useMemo, useRef } from 'react';
 import { Job, Status, User } from '../types';
 import { 
@@ -107,11 +106,30 @@ export const ReportSuratManager: React.FC<ReportSuratManagerProps> = ({
   };
 
   const handleDownloadTemplate = () => {
-    let headers = ["TGL", "CABANG_DEPT", "DESKRIPSI", "STATUS", "KETERANGAN", "DEADLINE"];
-    const csvContent = "data:text/csv;charset=utf-8," + headers.join(",");
+    let headers: string[] = [];
+    let example: string[] = [];
+    const today = new Date().toISOString().split('T')[0];
+
+    if (subCategory === 'Email Masuk') {
+        headers = ["TGL_MASUK", "CABANG_DEPT", "PIC_USER", "SUBJECT_EMAIL", "JENIS_PENGAJUAN", "PIC_REPD", "TGL_UPDATE", "STATUS", "KETERANGAN", "DEADLINE"];
+        example = [today, "JAKARTA", "User A", "Subject Contoh", "Urgent", "REPD B", today, "Pending", "Catatan...", today];
+    } else if (subCategory === 'Disposisi') {
+        headers = ["TGL", "CABANG_DEPT", "NO_DISPOSISI", "KLASIFIKASI", "DESKRIPSI", "STATUS", "KETERANGAN", "DEADLINE"];
+        example = [today, "BOD", "123/DSP/2024", "Penting", "Deskripsi Disposisi", "In Progress", "Proses Review", today];
+    } else if (subCategory === 'Internal Memo') {
+        headers = ["TGL", "CABANG_DEPT", "NO_MEMO", "DESKRIPSI", "TGL_AKTIFASI", "STATUS", "KETERANGAN"];
+        example = [today, "HC", "001/IM/2024", "Memo Contoh", today, "Completed", "Done"];
+    } else {
+        headers = ["TGL", "CABANG_DEPT", "DESKRIPSI", "STATUS", "KETERANGAN", "DEADLINE"];
+        example = [today, "CABANG", "Pekerjaan", "Pending", "-", today];
+    }
+
+    const csvContent = headers.join(",") + "\n" + example.join(",");
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
-    link.setAttribute("href", encodeURI(csvContent));
-    link.setAttribute("download", `Template_Surat.csv`);
+    link.setAttribute("href", url);
+    link.setAttribute("download", `Template_${subCategory.replace(/\s+/g, '_')}.csv`);
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
@@ -129,18 +147,40 @@ export const ReportSuratManager: React.FC<ReportSuratManagerProps> = ({
             if (!lines[i].trim()) continue;
             const cols = lines[i].split(/,|;/).map(v => v.trim().replace(/^"|"$/g, ''));
             if (cols.length < 3) continue;
-            newJobs.push({
+            
+            // Map columns based on subCategory for more accurate import
+            let job: Partial<Job> = {
                 id: crypto.randomUUID(),
                 category: "Report Surat",
                 subCategory: subCategory === 'Summary' ? 'Disposisi' : subCategory,
                 createdBy: currentUser.email,
-                dateInput: cols[0] || new Date().toISOString().split('T')[0],
-                branchDept: cols[1] || 'Unknown',
-                jobType: cols[2] || 'Imported Mail',
-                status: (cols[3] as Status) || 'Pending',
-                deadline: cols[5] || cols[0] || new Date().toISOString().split('T')[0],
-                keterangan: cols[4] || ''
-            });
+            };
+
+            if (subCategory === 'Email Masuk') {
+                job.dateInput = cols[0];
+                job.branchDept = cols[1];
+                job.jobType = cols[3];
+                job.status = (cols[7] as Status) || 'Pending';
+                job.keterangan = cols[8];
+                job.deadline = cols[9];
+                job.customData = { picUser: cols[2], jenisPengajuan: cols[4], picRepd: cols[5], tanggalUpdate: cols[6] };
+            } else if (subCategory === 'Disposisi') {
+                job.dateInput = cols[0];
+                job.branchDept = cols[1];
+                job.jobType = cols[4];
+                job.status = (cols[5] as Status) || 'Pending';
+                job.keterangan = cols[6];
+                job.deadline = cols[7];
+                job.customData = { nomorSurat: cols[2], klasifikasi: cols[3] };
+            } else {
+                job.dateInput = cols[0];
+                job.branchDept = cols[1];
+                job.jobType = cols[2];
+                job.status = (cols[3] as Status) || 'Pending';
+                job.keterangan = cols[4];
+                job.deadline = cols[5] || cols[0];
+            }
+            newJobs.push(job as Job);
         }
         if (newJobs.length > 0) onBulkAddJobs?.(newJobs);
         if (fileInputRef.current) fileInputRef.current.value = '';
@@ -148,8 +188,7 @@ export const ReportSuratManager: React.FC<ReportSuratManagerProps> = ({
     reader.readAsText(file);
   };
 
-  // Fix: Adding optional key property to the parameter type definition to prevent TS errors in list rendering
-  const CheckboxItem = ({ label, checked, onChange }: { label: string, checked: boolean, onChange: (v: boolean) => void, key?: React.Key }) => (
+  const CheckboxItem = ({ label, checked, onChange }: { label: string, checked: boolean, onChange: (v: boolean) => void }) => (
     <label className="flex items-center gap-2 cursor-pointer group">
         <input type="checkbox" className="hidden" checked={checked} onChange={e => onChange(e.target.checked)} />
         {checked ? <CheckSquare size={20} className="text-[#002F6C]" /> : <Square size={20} className="text-gray-300 group-hover:text-[#002F6C]" />}
@@ -441,8 +480,8 @@ export const ReportSuratManager: React.FC<ReportSuratManagerProps> = ({
             {subCategory !== 'Summary' && (
                 <>
                     <input type="file" ref={fileInputRef} className="hidden" accept=".csv" onChange={handleFileUpload} />
-                    <button onClick={handleDownloadTemplate} className="flex items-center px-6 py-3 bg-white border-2 border-gray-100 text-gray-600 rounded-2xl hover:bg-gray-50 text-xs font-black uppercase"><FileDown size={18} className="mr-2" /> Template</button>
-                    <button onClick={() => fileInputRef.current?.click()} className="flex items-center px-6 py-3 bg-blue-50 border-2 border-blue-100 text-[#002F6C] rounded-2xl hover:bg-[#002F6C] hover:text-white text-xs font-black uppercase"><Upload size={18} className="mr-2" /> Import</button>
+                    <button onClick={handleDownloadTemplate} title="Download Template CSV" className="flex items-center px-6 py-3 bg-white border-2 border-gray-100 text-gray-600 rounded-2xl hover:bg-gray-50 text-xs font-black uppercase"><FileDown size={18} className="mr-2" /> Template</button>
+                    <button onClick={() => fileInputRef.current?.click()} title="Import Data CSV" className="flex items-center px-6 py-3 bg-blue-50 border-2 border-blue-100 text-[#002F6C] rounded-2xl hover:bg-[#002F6C] hover:text-white text-xs font-black uppercase"><Upload size={18} className="mr-2" /> Import</button>
                     <button onClick={() => setView(view === 'list' ? 'form' : 'list')} className="flex items-center px-8 py-3 bg-[#EE2E24] text-white rounded-2xl hover:bg-red-700 text-xs font-black uppercase shadow-lg shadow-red-100">{view === 'list' ? 'Input Baru' : 'Lihat Daftar'}</button>
                 </>
             )}
