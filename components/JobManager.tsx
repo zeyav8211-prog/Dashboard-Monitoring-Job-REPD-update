@@ -160,10 +160,18 @@ export const JobManager: React.FC<JobManagerProps> = ({
       const text = event.target?.result as string;
       const lines = text.split(/\r\n|\n/);
       const newJobs: Job[] = [];
+      
+      if (lines.length < 2) return;
+
+      // Deteksi delimiter (koma atau titik koma)
+      const firstLine = lines[0];
+      const delimiter = firstLine.includes(';') ? ';' : ',';
+
       for (let i = 1; i < lines.length; i++) {
         if (!lines[i].trim()) continue;
-        const cols = lines[i].split(",").map(c => c.replace(/^"|"$/g, '').trim());
+        const cols = lines[i].split(delimiter).map(c => c.replace(/^"|"$/g, '').trim());
         if (cols.length < 3) continue;
+
         newJobs.push({
           id: crypto.randomUUID(),
           category,
@@ -177,7 +185,14 @@ export const JobManager: React.FC<JobManagerProps> = ({
           createdBy: currentUser.email
         } as Job);
       }
-      if (newJobs.length > 0) onBulkAddJobs?.(newJobs);
+
+      if (newJobs.length > 0) {
+        onBulkAddJobs(newJobs);
+        alert(`Berhasil mengimport ${newJobs.length} data pekerjaan.`);
+      } else {
+        alert("Tidak ada data valid yang ditemukan dalam file.");
+      }
+      
       if (fileInputRef.current) fileInputRef.current.value = '';
     };
     reader.readAsText(file);
