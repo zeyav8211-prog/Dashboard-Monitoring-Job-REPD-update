@@ -100,6 +100,7 @@ export const JobManager: React.FC<JobManagerProps> = ({
       case 'DONE': return 'bg-green-100 text-green-700 border-green-200';
       case 'In Progress': 
       case 'On Proses': return 'bg-blue-100 text-blue-700 border-blue-200';
+      case 'Hold': return 'bg-indigo-100 text-indigo-700 border-indigo-200';
       case 'Cancel':
       case 'Drop': return 'bg-red-50 text-red-700 border-red-200';
       default: return 'bg-amber-100 text-amber-700 border-amber-200';
@@ -139,13 +140,13 @@ export const JobManager: React.FC<JobManagerProps> = ({
 
   const downloadTemplate = () => {
     const headers = ["DateInput", "BranchDept", "JobType", "Status", "Deadline", "Keterangan"];
-    const example = "2024-05-20,Jakarta,Contoh Pekerjaan,Pending,2024-05-30,Catatan Ops";
+    const example = `${new Date().toISOString().split('T')[0]},JAKARTA,Pekerjaan Contoh,Pending,${new Date().toISOString().split('T')[0]},Catatan Tambahan`;
     const csvContent = headers.join(",") + "\n" + example;
     const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
     const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
     link.setAttribute("href", url);
-    link.setAttribute("download", "Template_Job_Manager.csv");
+    link.setAttribute("download", `Template_Input_${subCategory.replace(/\s+/g, '_')}.csv`);
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
