@@ -6,7 +6,7 @@ import {
   Cell
 } from 'recharts';
 import { 
-  CheckCircle2, Clock, LayoutDashboard, RefreshCcw, X, Briefcase, TrendingUp, Target, Trash2, Eye, Calendar, User as UserIcon, FileText, MapPin, Info, Download, Upload, FileType
+  CheckCircle2, Clock, LayoutDashboard, RefreshCcw, X, Briefcase, TrendingUp, Target, Trash2, Eye, Calendar, User as UserIcon, FileText, MapPin, Info, Download, Upload, FileType, AlertTriangle, Bell, PauseCircle, XCircle
 } from 'lucide-react';
 
 interface DashboardSummaryProps {
@@ -41,15 +41,31 @@ export const DashboardSummary: React.FC<DashboardSummaryProps> = ({
     const today = new Date(); today.setHours(0,0,0,0);
     const source = allJobs.length > 0 ? allJobs : jobs;
     
+    const h0Jobs = source.filter(j => {
+        if (['Completed', 'DONE', 'Drop', 'Cancel'].includes(j.status)) return false;
+        const dl = new Date(j.deadline); dl.setHours(0,0,0,0);
+        return dl.getTime() === today.getTime();
+    });
+
+    const h1Jobs = source.filter(j => {
+        if (['Completed', 'DONE', 'Drop', 'Cancel'].includes(j.status)) return false;
+        const tomorrow = new Date(today); tomorrow.setDate(today.getDate() + 1);
+        const dl = new Date(j.deadline); dl.setHours(0,0,0,0);
+        return dl.getTime() === tomorrow.getTime();
+    });
+
     return {
         total: source.length,
         completed: source.filter(j => ['Completed', 'DONE'].includes(j.status)).length,
         inProgress: source.filter(j => ['In Progress', 'On Proses'].includes(j.status)).length,
+        hold: source.filter(j => j.status === 'Hold').length,
+        cancel: source.filter(j => ['Cancel', 'Drop'].includes(j.status)).length,
         overdue: source.filter(j => {
             const dl = new Date(j.deadline); dl.setHours(0,0,0,0);
-            return dl.getTime() <= today.getTime() && !['Completed', 'DONE', 'Drop', 'Cancel'].includes(j.status);
+            return dl.getTime() < today.getTime() && !['Completed', 'DONE', 'Drop', 'Cancel'].includes(j.status);
         }).length,
-        dropped: source.filter(j => ['Cancel', 'Drop'].includes(j.status)).length
+        h0Count: h0Jobs.length,
+        h1Count: h1Jobs.length
     };
   }, [allJobs, jobs]);
 
@@ -81,6 +97,7 @@ export const DashboardSummary: React.FC<DashboardSummaryProps> = ({
       case 'DONE': return 'bg-green-100 text-green-700 border-green-200';
       case 'In Progress': 
       case 'On Proses': return 'bg-blue-100 text-blue-700 border-blue-200';
+      case 'Hold': return 'bg-indigo-100 text-indigo-700 border-indigo-200';
       case 'Cancel':
       case 'Drop': return 'bg-red-50 text-red-700 border-red-200';
       default: return 'bg-amber-100 text-amber-700 border-amber-200';
@@ -166,6 +183,52 @@ export const DashboardSummary: React.FC<DashboardSummaryProps> = ({
 
   return (
     <div className="space-y-8 animate-in fade-in duration-700 pb-20">
+      {/* NOTIFICATION BAR */}
+      {(stats.h0Count > 0 || stats.h1Count > 0) && (
+        <div className="flex flex-col gap-3">
+            {stats.h0Count > 0 && (
+                <div 
+                    onClick={() => handleStatClick('Deadline Hari Ini (H-0)', (j) => {
+                        const today = new Date(); today.setHours(0,0,0,0);
+                        const dl = new Date(j.deadline); dl.setHours(0,0,0,0);
+                        return dl.getTime() === today.getTime() && !['Completed', 'DONE', 'Drop', 'Cancel'].includes(j.status);
+                    })}
+                    className="animate-blink-red p-4 rounded-[2rem] flex items-center justify-between cursor-pointer shadow-2xl border-2 border-red-500 hover:scale-[1.01] transition-transform"
+                >
+                    <div className="flex items-center gap-4">
+                        <div className="bg-white/20 p-2 rounded-full"><AlertTriangle size={24} className="text-white" /></div>
+                        <div>
+                            <p className="text-white font-black uppercase text-[10px] tracking-widest">Peringatan Kritikal (H-0)</p>
+                            <p className="text-white font-bold text-sm">Terdapat <span className="underline">{stats.h0Count} pekerjaan</span> yang harus selesai hari ini!</p>
+                        </div>
+                    </div>
+                    <div className="px-6 py-2 bg-white/20 rounded-full text-white text-[10px] font-black uppercase tracking-widest">Detail Pekerjaan</div>
+                </div>
+            )}
+            {stats.h1Count > 0 && (
+                <div 
+                    onClick={() => handleStatClick('Deadline Besok (H-1)', (j) => {
+                        const today = new Date(); today.setHours(0,0,0,0);
+                        const tomorrow = new Date(today); tomorrow.setDate(today.getDate() + 1);
+                        const dl = new Date(j.deadline); dl.setHours(0,0,0,0);
+                        return dl.getTime() === tomorrow.getTime() && !['Completed', 'DONE', 'Drop', 'Cancel'].includes(j.status);
+                    })}
+                    className="animate-blink-orange p-4 rounded-[2rem] flex items-center justify-between cursor-pointer shadow-2xl border-2 border-orange-500 hover:scale-[1.01] transition-transform"
+                >
+                    <div className="flex items-center gap-4">
+                        <div className="bg-white/20 p-2 rounded-full"><Bell size={24} className="text-white" /></div>
+                        <div>
+                            <p className="text-white font-black uppercase text-[10px] tracking-widest">Peringatan Mendatang (H-1)</p>
+                            <p className="text-white font-bold text-sm">Terdapat <span className="underline">{stats.h1Count} pekerjaan</span> yang deadline besok.</p>
+                        </div>
+                    </div>
+                    <div className="px-6 py-2 bg-white/20 rounded-full text-white text-[10px] font-black uppercase tracking-widest">Cek Data</div>
+                </div>
+            )}
+        </div>
+      )}
+
+      {/* HEADER SECTION */}
       <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-6">
         <div className="flex items-center gap-6">
           <div className="p-6 bg-[#EE2E24] rounded-[2rem] text-white shadow-2xl shadow-red-200">
@@ -217,29 +280,37 @@ export const DashboardSummary: React.FC<DashboardSummaryProps> = ({
         </div>
       </div>
 
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6 gap-4">
         {[
           { label: 'Total Task', value: stats.total, icon: Briefcase, color: 'blue', filter: () => true },
           { label: 'Completed', value: stats.completed, icon: CheckCircle2, color: 'green', filter: (j: Job) => ['Completed', 'DONE'].includes(j.status) },
           { label: 'In Progress', value: stats.inProgress, icon: Clock, color: 'amber', filter: (j: Job) => ['In Progress', 'On Proses'].includes(j.status) },
-          { label: 'Dropped', value: stats.dropped, icon: Trash2, color: 'gray', filter: (j: Job) => ['Cancel', 'Drop'].includes(j.status) }
+          { label: 'Overdue / Late', value: stats.overdue, icon: Target, color: 'red', filter: (j: Job) => {
+              const today = new Date(); today.setHours(0,0,0,0);
+              const dl = new Date(j.deadline); dl.setHours(0,0,0,0);
+              return dl.getTime() < today.getTime() && !['Completed', 'DONE', 'Drop', 'Cancel'].includes(j.status);
+          }},
+          { label: 'Hold', value: stats.hold, icon: PauseCircle, color: 'indigo', filter: (j: Job) => j.status === 'Hold' },
+          { label: 'Cancel', value: stats.cancel, icon: XCircle, color: 'gray', filter: (j: Job) => ['Cancel', 'Drop'].includes(j.status) }
         ].map((item, idx) => (
           <div 
             key={idx} 
             onClick={() => handleStatClick(item.label, item.filter)}
-            className="bg-white p-8 rounded-[3.5rem] shadow-xl border border-gray-100 group hover:-translate-y-3 transition-all duration-500 relative overflow-hidden cursor-pointer"
+            className="bg-white p-6 rounded-[2.5rem] shadow-xl border border-gray-100 group hover:-translate-y-2 transition-all duration-500 relative overflow-hidden cursor-pointer"
           >
-            <div className={`w-16 h-16 rounded-2xl mb-8 flex items-center justify-center transition-all group-hover:scale-110 ${
+            <div className={`w-12 h-12 rounded-2xl mb-6 flex items-center justify-center transition-all group-hover:scale-110 ${
               item.color === 'blue' ? 'bg-blue-50 text-blue-600' :
               item.color === 'green' ? 'bg-green-50 text-green-600' :
-              item.color === 'amber' ? 'bg-amber-50 text-amber-600' : 'bg-gray-50 text-gray-600'
+              item.color === 'amber' ? 'bg-amber-50 text-amber-600' : 
+              item.color === 'red' ? 'bg-red-50 text-red-600' :
+              item.color === 'indigo' ? 'bg-indigo-50 text-indigo-600' : 'bg-gray-50 text-gray-600'
             }`}>
-              <item.icon size={32} />
+              <item.icon size={24} />
             </div>
-            <p className="text-[10px] font-black text-gray-400 uppercase tracking-[0.2em] mb-2">{item.label}</p>
-            <p className="text-5xl font-black text-gray-800 tracking-tighter leading-none">{item.value.toLocaleString()}</p>
-            <div className="absolute -bottom-4 -right-4 opacity-[0.03] group-hover:opacity-[0.08] transition-opacity">
-                <item.icon size={120} />
+            <p className="text-[9px] font-black text-gray-400 uppercase tracking-[0.1em] mb-1">{item.label}</p>
+            <p className="text-3xl font-black text-gray-800 tracking-tighter leading-none">{item.value.toLocaleString()}</p>
+            <div className="absolute -bottom-2 -right-2 opacity-[0.02] group-hover:opacity-[0.06] transition-opacity">
+                <item.icon size={80} />
             </div>
           </div>
         ))}
