@@ -1,6 +1,7 @@
-import React, { useState, useMemo } from 'react';
+
+import React, { useState, useMemo, useRef } from 'react';
 import { Job, Status, User } from '../types';
-import { Plus, X, Search, Pencil, CheckSquare, Square, Eye, Calendar, MapPin, User as UserIcon, Info, FileText } from 'lucide-react';
+import { Plus, X, Search, Pencil, CheckSquare, Square, Eye, Calendar, MapPin, User as UserIcon, Info, FileText, Download, Upload, FileType } from 'lucide-react';
 
 interface JobManagerProps {
   category: string;
@@ -20,12 +21,14 @@ export const JobManager: React.FC<JobManagerProps> = ({
   jobs,
   onAddJob,
   onUpdateJob,
+  onBulkAddJobs,
   currentUser
 }) => {
   const [view, setView] = useState<'list' | 'form'>('list');
   const [searchTerm, setSearchTerm] = useState('');
   const [editingId, setEditingId] = useState<string | null>(null);
   const [selectedJobDetail, setSelectedJobDetail] = useState<Job | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const [formData, setFormData] = useState<Partial<Job>>({
     status: 'Pending',
@@ -35,6 +38,10 @@ export const JobManager: React.FC<JobManagerProps> = ({
     disposisi: false,
     approve: false
   });
+
+  const filteredJobs = useMemo(() => {
+    return jobs.filter(j => j.category === category && j.subCategory === subCategory && (j.branchDept.toLowerCase().includes(searchTerm.toLowerCase()) || j.jobType.toLowerCase().includes(searchTerm.toLowerCase())));
+  }, [jobs, category, subCategory, searchTerm]);
 
   const handleEdit = (e: React.MouseEvent, job: Job) => {
     e.stopPropagation();
@@ -87,10 +94,6 @@ export const JobManager: React.FC<JobManagerProps> = ({
     handleCancelForm();
   };
 
-  const filteredJobs = useMemo(() => {
-    return jobs.filter(j => j.category === category && j.subCategory === subCategory && (j.branchDept.toLowerCase().includes(searchTerm.toLowerCase()) || j.jobType.toLowerCase().includes(searchTerm.toLowerCase())));
-  }, [jobs, category, subCategory, searchTerm]);
-
   const getStatusStyle = (status: Status) => {
     switch (status) {
       case 'Completed':
@@ -103,6 +106,71 @@ export const JobManager: React.FC<JobManagerProps> = ({
     }
   };
 
+  // CSV Tools
+  const downloadCSV = () => {
+    const headers = ["DateInput", "BranchDept", "JobType", "Status", "Deadline", "Keterangan"];
+    const csvContent = [
+      headers.join(","),
+      ...filteredJobs.map(j => [
+        j.dateInput, j.branchDept, `"${j.jobType}"`, j.status, j.deadline, `"${j.keterangan || ''}"`
+      ].join(","))
+    ].join("\n");
+    
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.setAttribute("href", url);
+    link.setAttribute("download", `Export_${category}_${subCategory}_${new Date().getTime()}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
+  const downloadTemplate = () => {
+    const headers = ["DateInput", "BranchDept", "JobType", "Status", "Deadline", "Keterangan"];
+    const example = "2024-05-20,Jakarta,Contoh Pekerjaan,Pending,2024-05-30,Catatan Ops";
+    const csvContent = headers.join(",") + "\n" + example;
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.setAttribute("href", url);
+    link.setAttribute("download", "Template_Job_Manager.csv");
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
+  const handleImport = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      const text = event.target?.result as string;
+      const lines = text.split(/\r\n|\n/);
+      const newJobs: Job[] = [];
+      for (let i = 1; i < lines.length; i++) {
+        if (!lines[i].trim()) continue;
+        const cols = lines[i].split(",").map(c => c.replace(/^"|"$/g, '').trim());
+        if (cols.length < 3) continue;
+        newJobs.push({
+          id: crypto.randomUUID(),
+          category,
+          subCategory,
+          dateInput: cols[0],
+          branchDept: cols[1],
+          jobType: cols[2],
+          status: (cols[3] as Status) || 'Pending',
+          deadline: cols[4] || cols[0],
+          keterangan: cols[5] || '',
+          createdBy: currentUser.email
+        } as Job);
+      }
+      if (newJobs.length > 0) onBulkAddJobs?.(newJobs);
+      if (fileInputRef.current) fileInputRef.current.value = '';
+    };
+    reader.readAsText(file);
+  };
+
   return (
     <div className="bg-white rounded-[3rem] shadow-2xl border border-gray-100 min-h-[600px] flex flex-col overflow-hidden animate-in fade-in duration-500">
       <div className="p-8 border-b border-gray-100 flex flex-col md:flex-row justify-between items-start md:items-center gap-4 bg-gray-50/50">
@@ -110,11 +178,25 @@ export const JobManager: React.FC<JobManagerProps> = ({
           <h2 className="text-2xl font-black text-gray-800 tracking-tighter uppercase italic">Daftar <span className="text-[#EE2E24]">Pekerjaan</span></h2>
           <p className="text-[10px] text-gray-400 font-bold uppercase tracking-widest mt-1">{category} / {subCategory}</p>
         </div>
-        {view === 'list' && (
-          <button onClick={() => setView('form')} className="px-8 py-3 bg-[#EE2E24] text-white rounded-2xl hover:bg-red-700 text-xs font-black uppercase shadow-lg shadow-red-100 transition-all flex items-center gap-2">
-            <Plus size={18} /> Input Pekerjaan
-          </button>
-        )}
+        <div className="flex flex-wrap items-center gap-2">
+            {view === 'list' && (
+              <>
+                <button onClick={downloadTemplate} title="Download Template" className="p-3 bg-white text-gray-400 border border-gray-100 rounded-xl hover:text-blue-600 transition-all">
+                    <FileType size={18} />
+                </button>
+                <input type="file" ref={fileInputRef} className="hidden" accept=".csv" onChange={handleImport} />
+                <button onClick={() => fileInputRef.current?.click()} title="Import Data" className="p-3 bg-white text-gray-400 border border-gray-100 rounded-xl hover:text-orange-600 transition-all">
+                    <Upload size={18} />
+                </button>
+                <button onClick={downloadCSV} title="Export Data" className="p-3 bg-white text-gray-400 border border-gray-100 rounded-xl hover:text-green-600 transition-all">
+                    <Download size={18} />
+                </button>
+                <button onClick={() => setView('form')} className="px-8 py-3 bg-[#EE2E24] text-white rounded-2xl hover:bg-red-700 text-xs font-black uppercase shadow-lg shadow-red-100 transition-all flex items-center gap-2 ml-2">
+                    <Plus size={18} /> Input Baru
+                </button>
+              </>
+            )}
+        </div>
       </div>
 
       <div className="p-8 flex-1 bg-white">
@@ -126,19 +208,6 @@ export const JobManager: React.FC<JobManagerProps> = ({
                 <div><label className="block text-[10px] font-black text-gray-400 uppercase mb-2">Tanggal</label><input type="date" required className="w-full px-5 py-3.5 bg-gray-50 border border-gray-200 rounded-2xl font-bold" value={formData.dateInput} onChange={e => setFormData({...formData, dateInput: e.target.value})} /></div>
                 <div><label className="block text-[10px] font-black text-gray-400 uppercase mb-2">Cabang / Dept</label><input type="text" required className="w-full px-5 py-3.5 bg-gray-50 border border-gray-200 rounded-2xl font-bold" value={formData.branchDept} onChange={e => setFormData({...formData, branchDept: e.target.value})} /></div>
                 <div className="md:col-span-2"><label className="block text-[10px] font-black text-gray-400 uppercase mb-2">Nama Pekerjaan</label><input type="text" required className="w-full px-5 py-3.5 bg-gray-50 border border-gray-200 rounded-2xl font-bold" value={formData.jobType} onChange={e => setFormData({...formData, jobType: e.target.value})} /></div>
-                <div className="md:col-span-2 p-8 bg-blue-50/50 rounded-[2.5rem] border border-blue-100 flex flex-wrap gap-8">
-                    {[
-                      {label: 'Konfirmasi Cabang', key: 'konfirmasiCabang'},
-                      {label: 'Disposisi', key: 'disposisi'},
-                      {label: 'Approve', key: 'approve'}
-                    ].map(item => (
-                      <label key={item.key} className="flex items-center gap-3 cursor-pointer group">
-                        <input type="checkbox" className="hidden" checked={!!formData[item.key as keyof typeof formData]} onChange={e => setFormData({...formData, [item.key]: e.target.checked})} />
-                        {formData[item.key as keyof typeof formData] ? <CheckSquare className="text-[#002F6C] w-6 h-6" /> : <Square className="text-gray-300 w-6 h-6" />}
-                        <span className="text-sm font-bold text-gray-700">{item.label}</span>
-                      </label>
-                    ))}
-                </div>
                 <div><label className="block text-[10px] font-black text-gray-400 uppercase mb-2">Status</label><select className="w-full px-5 py-3.5 bg-gray-50 border border-gray-200 rounded-2xl font-bold" value={formData.status} onChange={e => setFormData({...formData, status: e.target.value as Status})}><option value="Pending">Pending</option><option value="In Progress">In Progress</option><option value="Completed">Completed</option><option value="Hold">Hold</option><option value="Cancel">Cancel</option></select></div>
                 <div><label className="block text-[10px] font-black text-gray-400 uppercase mb-2">Deadline</label><input type="date" required className="w-full px-5 py-3.5 bg-gray-50 border border-gray-200 rounded-2xl font-bold" value={formData.deadline} onChange={e => setFormData({...formData, deadline: e.target.value})} /></div>
               </div>
@@ -176,7 +245,7 @@ export const JobManager: React.FC<JobManagerProps> = ({
         )}
       </div>
 
-      {/* JOB DETAIL MODAL */}
+      {/* MODAL DETAIL (DUPLICATED FOR UNIFORMITY) */}
       {selectedJobDetail && (
         <div className="fixed inset-0 z-[110] bg-black/80 backdrop-blur-xl flex items-center justify-center p-6 animate-in zoom-in-95 duration-300">
            <div className="bg-white w-full max-w-2xl rounded-[4rem] shadow-2xl overflow-hidden border-4 border-white/20">
