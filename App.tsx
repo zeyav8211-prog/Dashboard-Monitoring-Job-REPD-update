@@ -232,6 +232,8 @@ function App() {
            onAddJob={handleAddJob}
            onUpdateJob={handleUpdateJob}
            onDeleteJob={handleDeleteJob}
+           /* Fix: Add missing onBulkAddJobs prop */
+           onBulkAddJobs={handleBulkAdd}
            currentUser={currentUser}
          />
        ) :
