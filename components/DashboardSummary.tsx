@@ -8,7 +8,7 @@ import {
 } from 'recharts';
 import { 
   AlertCircle, CheckCircle2, Clock, CalendarDays, ArrowLeft, Search, 
-  LayoutDashboard, Hourglass, AlertOctagon, AlertTriangle, 
+  LayoutDashboard, Hourglass, OctagonAlert, TriangleAlert, 
   RefreshCcw, X, User, Briefcase, Info, TrendingUp, Target, Trash2
 } from 'lucide-react';
 
@@ -109,7 +109,7 @@ export const DashboardSummary: React.FC<DashboardSummaryProps> = ({
         {stats.overdue > 0 && (
           <div onClick={() => setFilterStatus('Critical (H-0)')} className="animate-blink-red p-4 rounded-xl shadow-lg flex items-center justify-between cursor-pointer border-2 border-red-500 group">
             <div className="flex items-center gap-3 font-black uppercase tracking-tighter italic text-sm md:text-base">
-              <AlertOctagon size={24} className="group-hover:rotate-12 transition-transform" /> 
+              <OctagonAlert size={24} className="group-hover:rotate-12 transition-transform" /> 
               <span>{stats.overdue} PEKERJAAN UNIT MELEWATI DEADLINE! (H-0)</span>
             </div>
             <div className="font-bold underline text-[10px] md:text-xs group-hover:translate-x-1 transition-transform">LIHAT &rarr;</div>
@@ -118,7 +118,7 @@ export const DashboardSummary: React.FC<DashboardSummaryProps> = ({
         {stats.nearDeadline > 0 && (
           <div onClick={() => setFilterStatus('Warning (H-1)')} className="animate-blink-orange p-4 rounded-xl shadow-lg flex items-center justify-between cursor-pointer border-2 border-orange-500 group">
             <div className="flex items-center gap-3 font-black uppercase tracking-tighter italic text-sm md:text-base">
-              <AlertTriangle size={24} className="group-hover:rotate-12 transition-transform" /> 
+              <TriangleAlert size={24} className="group-hover:rotate-12 transition-transform" /> 
               <span>{stats.nearDeadline} PEKERJAAN UNIT DEADLINE BESOK! (H-1)</span>
             </div>
             <div className="font-bold underline text-[10px] md:text-xs group-hover:translate-x-1 transition-transform">LIHAT &rarr;</div>
