@@ -1,7 +1,6 @@
-
 import React, { useState, useMemo, useRef } from 'react';
 import { Job, Status, User } from '../types';
-import { Plus, X, Search, Pencil, CheckSquare, Square, Eye, Calendar, MapPin, User as UserIcon, Info, FileText, Download, Upload, FileType } from 'lucide-react';
+import { Plus, X, Search, Pencil, CheckSquare, Square, Eye, Calendar, MapPin, User as UserIcon, Info, FileText, Download, Upload, FileType, Trash2 } from 'lucide-react';
 
 interface JobManagerProps {
   category: string;
@@ -22,6 +21,7 @@ export const JobManager: React.FC<JobManagerProps> = ({
   onAddJob,
   onUpdateJob,
   onBulkAddJobs,
+  onDeleteJob,
   currentUser
 }) => {
   const [view, setView] = useState<'list' | 'form'>('list');
@@ -101,18 +101,29 @@ export const JobManager: React.FC<JobManagerProps> = ({
       case 'In Progress': 
       case 'On Proses': return 'bg-blue-100 text-blue-700 border-blue-200';
       case 'Cancel':
-      case 'Drop': return 'bg-gray-100 text-gray-700 border-gray-200';
+      case 'Drop': return 'bg-red-50 text-red-700 border-red-200';
       default: return 'bg-amber-100 text-amber-700 border-amber-200';
     }
   };
 
-  // CSV Tools
+  const getDeadlineStyle = (deadline: string, status: Status) => {
+    if (['Completed', 'DONE', 'Cancel', 'Drop'].includes(status)) return '';
+    const today = new Date(); today.setHours(0,0,0,0);
+    const dl = new Date(deadline); dl.setHours(0,0,0,0);
+    const diffTime = dl.getTime() - today.getTime();
+    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+
+    if (diffDays <= 0) return 'animate-blink-red px-2 py-1 rounded-lg text-white font-black';
+    if (diffDays === 1) return 'animate-blink-orange px-2 py-1 rounded-lg text-white font-black';
+    return '';
+  };
+
   const downloadCSV = () => {
-    const headers = ["DateInput", "BranchDept", "JobType", "Status", "Deadline", "Keterangan"];
+    const headers = ["DateInput", "BranchDept", "JobType", "Status", "Deadline", "Keterangan", "CreatedBy"];
     const csvContent = [
       headers.join(","),
       ...filteredJobs.map(j => [
-        j.dateInput, j.branchDept, `"${j.jobType}"`, j.status, j.deadline, `"${j.keterangan || ''}"`
+        j.dateInput, j.branchDept, `"${j.jobType}"`, j.status, j.deadline, `"${j.keterangan || ''}"`, j.createdBy || 'System'
       ].join(","))
     ].join("\n");
     
@@ -208,7 +219,7 @@ export const JobManager: React.FC<JobManagerProps> = ({
                 <div><label className="block text-[10px] font-black text-gray-400 uppercase mb-2">Tanggal</label><input type="date" required className="w-full px-5 py-3.5 bg-gray-50 border border-gray-200 rounded-2xl font-bold" value={formData.dateInput} onChange={e => setFormData({...formData, dateInput: e.target.value})} /></div>
                 <div><label className="block text-[10px] font-black text-gray-400 uppercase mb-2">Cabang / Dept</label><input type="text" required className="w-full px-5 py-3.5 bg-gray-50 border border-gray-200 rounded-2xl font-bold" value={formData.branchDept} onChange={e => setFormData({...formData, branchDept: e.target.value})} /></div>
                 <div className="md:col-span-2"><label className="block text-[10px] font-black text-gray-400 uppercase mb-2">Nama Pekerjaan</label><input type="text" required className="w-full px-5 py-3.5 bg-gray-50 border border-gray-200 rounded-2xl font-bold" value={formData.jobType} onChange={e => setFormData({...formData, jobType: e.target.value})} /></div>
-                <div><label className="block text-[10px] font-black text-gray-400 uppercase mb-2">Status</label><select className="w-full px-5 py-3.5 bg-gray-50 border border-gray-200 rounded-2xl font-bold" value={formData.status} onChange={e => setFormData({...formData, status: e.target.value as Status})}><option value="Pending">Pending</option><option value="In Progress">In Progress</option><option value="Completed">Completed</option><option value="Hold">Hold</option><option value="Cancel">Cancel</option></select></div>
+                <div><label className="block text-[10px] font-black text-gray-400 uppercase mb-2">Status</label><select className="w-full px-5 py-3.5 bg-gray-50 border border-gray-200 rounded-2xl font-bold" value={formData.status} onChange={e => setFormData({...formData, status: e.target.value as Status})}><option value="Pending">Pending</option><option value="In Progress">In Progress</option><option value="Completed">Completed</option><option value="Hold">Hold</option><option value="Cancel">Cancel</option><option value="Drop">Drop</option></select></div>
                 <div><label className="block text-[10px] font-black text-gray-400 uppercase mb-2">Deadline</label><input type="date" required className="w-full px-5 py-3.5 bg-gray-50 border border-gray-200 rounded-2xl font-bold" value={formData.deadline} onChange={e => setFormData({...formData, deadline: e.target.value})} /></div>
               </div>
               <div className="flex justify-end gap-4">
@@ -223,18 +234,46 @@ export const JobManager: React.FC<JobManagerProps> = ({
             <div className="overflow-x-auto rounded-[2.5rem] border border-gray-100 shadow-sm bg-white overflow-hidden">
               <table className="w-full text-sm text-left">
                 <thead className="bg-gray-50 text-[10px] font-black uppercase tracking-widest text-gray-400 border-b">
-                  <tr><th className="p-6">Pekerjaan</th><th className="p-6">Cabang / Dept</th><th className="p-6">Validasi</th><th className="p-6">Status</th><th className="p-6">Deadline</th><th className="p-6 text-center">Aksi</th></tr>
+                  <tr>
+                    <th className="p-6">Pekerjaan</th>
+                    <th className="p-6">Cabang / Dept</th>
+                    <th className="p-6">Status</th>
+                    <th className="p-6">Deadline</th>
+                    <th className="p-6">Dibuat Oleh</th>
+                    <th className="p-6 text-center">Aksi</th>
+                  </tr>
                 </thead>
                 <tbody className="divide-y divide-gray-50">
                   {filteredJobs.length === 0 ? (<tr><td colSpan={6} className="p-20 text-center text-gray-400 italic">Belum ada data pekerjaan.</td></tr>) : (
                     filteredJobs.map((job) => (
                       <tr key={job.id} onClick={() => setSelectedJobDetail(job)} className="hover:bg-gray-50/80 transition-all cursor-pointer group">
-                        <td className="p-6"><div className="font-black text-gray-800 text-[13px] uppercase italic">{job.jobType}</div><div className="text-[9px] text-gray-400 font-bold uppercase mt-1 truncate max-w-[200px]">{job.keterangan || '-'}</div></td>
+                        <td className="p-6">
+                          <div className="font-black text-gray-800 text-[13px] uppercase italic">{job.jobType}</div>
+                          <div className="text-[9px] text-gray-400 font-bold uppercase mt-1 truncate max-w-[200px]">{job.keterangan || '-'}</div>
+                        </td>
                         <td className="p-6 font-black text-gray-600">{job.branchDept}</td>
-                        <td className="p-6"><div className="flex gap-1.5"><div className={`w-2.5 h-2.5 rounded-full ${job.konfirmasiCabang ? 'bg-green-500' : 'bg-gray-200'}`}></div><div className={`w-2.5 h-2.5 rounded-full ${job.disposisi ? 'bg-blue-500' : 'bg-gray-200'}`}></div><div className={`w-2.5 h-2.5 rounded-full ${job.approve ? 'bg-indigo-500' : 'bg-gray-200'}`}></div></div></td>
                         <td className="p-6"><span className={`px-4 py-1.5 rounded-xl text-[9px] font-black uppercase border ${getStatusStyle(job.status)}`}>{job.status}</span></td>
-                        <td className="p-6 font-black text-gray-500">{new Date(job.deadline).toLocaleDateString()}</td>
-                        <td className="p-6 text-center flex items-center justify-center gap-2"><button onClick={(e) => handleEdit(e, job)} className="p-3 text-gray-300 hover:text-blue-600 hover:bg-white rounded-xl shadow-sm"><Pencil size={18} /></button><div className="p-3 text-gray-300 group-hover:text-[#002F6C] transition-colors"><Eye size={18}/></div></td>
+                        <td className="p-6 font-black text-gray-500">
+                           <span className={getDeadlineStyle(job.deadline, job.status)}>
+                            {new Date(job.deadline).toLocaleDateString()}
+                           </span>
+                        </td>
+                        <td className="p-6 text-[11px] font-bold text-gray-400 italic">{job.createdBy || 'System'}</td>
+                        <td className="p-6 text-center">
+                          <div className="flex items-center justify-center gap-2">
+                            <button onClick={(e) => handleEdit(e, job)} className="p-3 text-gray-300 hover:text-blue-600 hover:bg-white rounded-xl shadow-sm"><Pencil size={18} /></button>
+                            {['Cancel', 'Drop'].includes(job.status) && (
+                              <button 
+                                onClick={(e) => { e.stopPropagation(); onDeleteJob(job.id); }}
+                                className="p-3 text-red-300 hover:text-red-600 hover:bg-white rounded-xl shadow-sm"
+                                title="Hapus Pekerjaan"
+                              >
+                                <Trash2 size={18} />
+                              </button>
+                            )}
+                            <div className="p-3 text-gray-300 group-hover:text-[#002F6C] transition-colors"><Eye size={18}/></div>
+                          </div>
+                        </td>
                       </tr>
                     ))
                   )}
@@ -245,7 +284,6 @@ export const JobManager: React.FC<JobManagerProps> = ({
         )}
       </div>
 
-      {/* MODAL DETAIL (DUPLICATED FOR UNIFORMITY) */}
       {selectedJobDetail && (
         <div className="fixed inset-0 z-[110] bg-black/80 backdrop-blur-xl flex items-center justify-center p-6 animate-in zoom-in-95 duration-300">
            <div className="bg-white w-full max-w-2xl rounded-[4rem] shadow-2xl overflow-hidden border-4 border-white/20">
@@ -264,7 +302,7 @@ export const JobManager: React.FC<JobManagerProps> = ({
                         <p className="font-black text-gray-800 text-lg uppercase italic">{selectedJobDetail.branchDept}</p>
                       </div>
                       <div className="space-y-1">
-                        <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest flex items-center gap-2"><UserIcon size={14}/> Creator</p>
+                        <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest flex items-center gap-2"><UserIcon size={14}/> Dibuat Oleh</p>
                         <p className="font-bold text-gray-600 truncate">{selectedJobDetail.createdBy || 'System'}</p>
                       </div>
                       <div className="space-y-1">
