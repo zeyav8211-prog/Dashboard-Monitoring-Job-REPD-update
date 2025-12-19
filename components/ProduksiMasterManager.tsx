@@ -10,7 +10,7 @@ interface ProduksiMasterManagerProps {
   onUpdateJob: (id: string, updates: Partial<Job>) => void;
   onDeleteJob: (id: string) => void;
   currentUser: User;
-  onBulkAddJobs?: (jobs: Job[]) => void;
+  onBulkAddJobs: (jobs: Job[]) => void;
 }
 
 export const ProduksiMasterManager: React.FC<ProduksiMasterManagerProps> = ({
@@ -132,10 +132,17 @@ export const ProduksiMasterManager: React.FC<ProduksiMasterManagerProps> = ({
         const text = event.target?.result as string;
         const lines = text.split(/\r\n|\n/);
         const newJobs: Job[] = [];
+        
+        if (lines.length < 2) return;
+
+        const firstLine = lines[0];
+        const delimiter = firstLine.includes(';') ? ';' : ',';
+
         for (let i = 1; i < lines.length; i++) {
             if (!lines[i].trim()) continue;
-            const cols = lines[i].split(/,|;/).map(v => v.trim().replace(/^"|"$/g, ''));
+            const cols = lines[i].split(delimiter).map(v => v.trim().replace(/^"|"$/g, ''));
             if (cols.length < 3) continue;
+            
             newJobs.push({
                 id: crypto.randomUUID(),
                 category,
@@ -148,9 +155,16 @@ export const ProduksiMasterManager: React.FC<ProduksiMasterManagerProps> = ({
                 deadline: cols[4],
                 status: (cols[5] as Status) || 'Pending',
                 keterangan: cols[6] || ''
-            });
+            } as Job);
         }
-        if (newJobs.length > 0) onBulkAddJobs?.(newJobs);
+        
+        if (newJobs.length > 0) {
+            onBulkAddJobs(newJobs);
+            alert(`Berhasil mengimport ${newJobs.length} data produksi master.`);
+        } else {
+            alert("Tidak ada data valid yang ditemukan.");
+        }
+        
         if (fileInputRef.current) fileInputRef.current.value = '';
     };
     reader.readAsText(file);
