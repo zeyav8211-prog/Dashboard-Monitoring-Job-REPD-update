@@ -1,20 +1,21 @@
-import React, { useMemo, useState } from 'react';
+
+import React, { useMemo, useState, useRef } from 'react';
 import { Job, Status } from '../types';
 import { MENU_STRUCTURE } from '../constants';
 import { 
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, 
   Cell
 } from 'recharts';
-// Add missing Info icon import from lucide-react
 import { 
   CheckCircle2, Clock, LayoutDashboard, AlertOctagon, 
-  RefreshCcw, X, Briefcase, TrendingUp, Target, Trash2, Eye, Calendar, User as UserIcon, FileText, MapPin, Info
+  RefreshCcw, X, Briefcase, TrendingUp, Target, Trash2, Eye, Calendar, User as UserIcon, FileText, MapPin, Info, Download, Upload, FileType
 } from 'lucide-react';
 
 interface DashboardSummaryProps {
   jobs: Job[]; 
   allJobs?: Job[]; 
   onDeleteJob: (id: string) => void;
+  onBulkAddJobs?: (jobs: Job[]) => void;
   isLoading?: boolean;
   isSaving?: boolean;
   storageProvider?: 'GAS' | 'JSONBIN' | 'BOTH';
@@ -30,10 +31,12 @@ export const DashboardSummary: React.FC<DashboardSummaryProps> = ({
     isLoading = false,
     storageProvider = 'GAS',
     onProviderChange,
-    onForceSync
+    onForceSync,
+    onBulkAddJobs
 }) => {
   const [drillDownFilter, setDrillDownFilter] = useState<{label: string, filter: (j: Job) => boolean} | null>(null);
   const [selectedJobDetail, setSelectedJobDetail] = useState<Job | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const stats = useMemo(() => {
     const today = new Date(); today.setHours(0,0,0,0);
@@ -85,6 +88,73 @@ export const DashboardSummary: React.FC<DashboardSummaryProps> = ({
     }
   };
 
+  // CSV Functions
+  const downloadCSV = () => {
+    const source = allJobs.length > 0 ? allJobs : jobs;
+    const headers = ["ID", "Category", "SubCategory", "DateInput", "BranchDept", "JobType", "Status", "Deadline", "CreatedBy"];
+    const csvContent = [
+      headers.join(","),
+      ...source.map(j => [
+        j.id, j.category, j.subCategory, j.dateInput, j.branchDept, `"${j.jobType}"`, j.status, j.deadline, j.createdBy
+      ].join(","))
+    ].join("\n");
+    
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.setAttribute("href", url);
+    link.setAttribute("download", `Data_Pekerjaan_Full_${new Date().toISOString().split('T')[0]}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
+  const downloadTemplate = () => {
+    const headers = ["Category", "SubCategory", "DateInput", "BranchDept", "JobType", "Status", "Deadline"];
+    const example = "Report Surat,Email Masuk,2024-05-20,Jakarta,Email Urgent,Pending,2024-05-25";
+    const csvContent = headers.join(",") + "\n" + example;
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.setAttribute("href", url);
+    link.setAttribute("download", "Template_Pekerjaan_Dashboard.csv");
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
+  const handleImport = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      const text = event.target?.result as string;
+      const lines = text.split(/\r\n|\n/);
+      const newJobs: Job[] = [];
+      const headers = lines[0].split(",");
+
+      for (let i = 1; i < lines.length; i++) {
+        if (!lines[i].trim()) continue;
+        const cols = lines[i].split(",").map(c => c.replace(/^"|"$/g, '').trim());
+        if (cols.length < 5) continue;
+        newJobs.push({
+          id: crypto.randomUUID(),
+          category: cols[0],
+          subCategory: cols[1],
+          dateInput: cols[2],
+          branchDept: cols[3],
+          jobType: cols[4],
+          status: (cols[5] as Status) || 'Pending',
+          deadline: cols[6] || cols[2]
+        } as Job);
+      }
+      if (newJobs.length > 0) onBulkAddJobs?.(newJobs);
+      if (fileInputRef.current) fileInputRef.current.value = '';
+      alert(`Berhasil mengimpor ${newJobs.length} data.`);
+    };
+    reader.readAsText(file);
+  };
+
   return (
     <div className="space-y-8 animate-in fade-in duration-700 pb-20">
       {/* HEADER SECTION */}
@@ -98,29 +168,45 @@ export const DashboardSummary: React.FC<DashboardSummaryProps> = ({
               Control <span className="text-[#EE2E24]">Center</span>
             </h1>
             <p className="text-[10px] text-gray-400 font-black uppercase tracking-[0.4em] mt-3">
-              JNE Monitoring System - Real-time Analytics
+              JNE Monitoring System - Master Dashboard
             </p>
           </div>
         </div>
 
-        <div className="flex items-center gap-2 bg-white p-3 rounded-[2rem] shadow-xl border border-gray-100">
-          <div className="flex gap-1 p-1 bg-gray-50 rounded-[1.5rem]">
-            {(['GAS', 'JSONBIN', 'BOTH'] as const).map(p => (
-              <button
-                key={p}
-                onClick={() => onProviderChange?.(p)}
-                className={`px-4 py-2 text-[9px] font-black uppercase rounded-xl transition-all ${
-                  storageProvider === p ? 'bg-[#002F6C] text-white shadow-lg' : 'text-gray-400 hover:text-gray-600'
-                }`}
-              >
-                {p}
-              </button>
-            ))}
-          </div>
-          <div className="h-8 w-px bg-gray-100 mx-2"></div>
-          <button onClick={onForceSync} className={`p-3 bg-gray-50 text-blue-600 rounded-full hover:bg-blue-600 hover:text-white transition-all ${isLoading ? 'animate-spin' : ''}`}>
-            <RefreshCcw size={18} />
-          </button>
+        {/* CLOUD & TOOLS SELECTOR */}
+        <div className="flex flex-col md:flex-row items-center gap-3">
+            <div className="flex items-center gap-2 bg-white p-2 rounded-[2rem] shadow-xl border border-gray-100">
+                <button onClick={downloadTemplate} title="Download Template CSV" className="p-3 text-blue-600 hover:bg-blue-50 rounded-full transition-all">
+                    <FileType size={18} />
+                </button>
+                <input type="file" ref={fileInputRef} className="hidden" accept=".csv" onChange={handleImport} />
+                <button onClick={() => fileInputRef.current?.click()} title="Import Data CSV" className="p-3 text-orange-600 hover:bg-orange-50 rounded-full transition-all">
+                    <Upload size={18} />
+                </button>
+                <button onClick={downloadCSV} title="Export Semua Data" className="p-3 text-green-600 hover:bg-green-50 rounded-full transition-all">
+                    <Download size={18} />
+                </button>
+            </div>
+
+            <div className="flex items-center gap-2 bg-white p-2 rounded-[2rem] shadow-xl border border-gray-100">
+                <div className="flex gap-1 p-1 bg-gray-50 rounded-[1.5rem]">
+                    {(['GAS', 'JSONBIN', 'BOTH'] as const).map(p => (
+                    <button
+                        key={p}
+                        onClick={() => onProviderChange?.(p)}
+                        className={`px-4 py-2 text-[9px] font-black uppercase rounded-xl transition-all ${
+                        storageProvider === p ? 'bg-[#002F6C] text-white shadow-lg' : 'text-gray-400 hover:text-gray-600'
+                        }`}
+                    >
+                        {p}
+                    </button>
+                    ))}
+                </div>
+                <div className="h-8 w-px bg-gray-100 mx-2"></div>
+                <button onClick={onForceSync} className={`p-3 bg-gray-50 text-blue-600 rounded-full hover:bg-blue-600 hover:text-white transition-all ${isLoading ? 'animate-spin' : ''}`}>
+                    <RefreshCcw size={18} />
+                </button>
+            </div>
         </div>
       </div>
 
@@ -161,7 +247,7 @@ export const DashboardSummary: React.FC<DashboardSummaryProps> = ({
               <TrendingUp size={28} className="text-[#EE2E24]" />
               Workload <span className="text-[#EE2E24]">Distribution</span>
             </h3>
-            <p className="text-[10px] text-gray-400 font-bold uppercase tracking-widest mt-1">Klik grafik untuk melihat detail kategori</p>
+            <p className="text-[10px] text-gray-400 font-bold uppercase tracking-widest mt-1">Klik grafik untuk drill-down detail data</p>
           </div>
           <div className="h-[400px]">
             <ResponsiveContainer width="100%" height="100%">
@@ -198,17 +284,6 @@ export const DashboardSummary: React.FC<DashboardSummaryProps> = ({
                 </div>
                 <div className="w-full bg-white/10 h-3 rounded-full mt-8 overflow-hidden">
                     <div className="bg-green-400 h-full transition-all duration-1000" style={{ width: `${successRate}%` }}></div>
-                </div>
-              </div>
-              <div className="flex items-center gap-6 px-4">
-                <div className="w-16 h-16 rounded-[1.5rem] bg-[#EE2E24] flex items-center justify-center">
-                  <Target size={32} className="text-white" />
-                </div>
-                <div>
-                  <p className="text-[10px] font-black text-white/40 uppercase tracking-widest">Health Condition</p>
-                  <p className="font-black text-xl uppercase tracking-tighter italic text-white/90">
-                    {stats.overdue > 0 ? 'NEEDS ATTENTION' : 'SYSTEM OPTIMAL'}
-                  </p>
                 </div>
               </div>
             </div>
