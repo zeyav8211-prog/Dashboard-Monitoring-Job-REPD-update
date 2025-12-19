@@ -203,7 +203,6 @@ export const DashboardSummary: React.FC<DashboardSummaryProps> = ({
         </div>
 
         <div className="flex flex-col md:flex-row items-center gap-3">
-            {/* Auto-Local Server Sync Control */}
             <div className="flex items-center gap-2 bg-white p-3 rounded-[2rem] shadow-xl border border-gray-100 transition-all hover:shadow-2xl">
                 <div className={`p-2 rounded-full ${localSyncActive ? 'bg-green-100 text-green-600' : 'bg-gray-100 text-gray-400'}`}>
                     {localSyncActive ? <ShieldCheck size={20} /> : <HardDrive size={20} />}
@@ -214,17 +213,13 @@ export const DashboardSummary: React.FC<DashboardSummaryProps> = ({
                         {localSyncActive ? 'Drive X: Connected' : 'Disconnected'}
                     </p>
                 </div>
-                {!localSyncActive ? (
+                {!localSyncActive && (
                     <button 
                         onClick={onConnectLocal}
                         className="px-4 py-2 bg-[#002F6C] text-white text-[9px] font-black uppercase rounded-xl hover:bg-blue-900 transition-all"
                     >
                         Connect X: Drive
                     </button>
-                ) : (
-                    <div className="w-8 h-8 flex items-center justify-center bg-green-50 rounded-full animate-pulse">
-                        <div className="w-2 h-2 bg-green-500 rounded-full"></div>
-                    </div>
                 )}
             </div>
 
@@ -314,7 +309,7 @@ export const DashboardSummary: React.FC<DashboardSummaryProps> = ({
                 <XAxis dataKey="name" fontSize={9} axisLine={false} tickLine={false} tick={{fontWeight: '900', fill: '#94a3b8'}} interval={0} />
                 <YAxis hide />
                 <Tooltip cursor={{fill: '#f8fafc', radius: 20}} />
-                <Bar dataKey="count" radius={[20, 20, 10, 10]} barSize={45}>
+                <Bar dataKey="count" radius={[20, 20, 10, 10]} barSize={45} className="cursor-pointer">
                   {barData.map((_, index) => <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />)}
                 </Bar>
               </BarChart>
@@ -340,7 +335,96 @@ export const DashboardSummary: React.FC<DashboardSummaryProps> = ({
         </div>
       </div>
 
-      {/* Drill Down Modal dan detail lainnya tetap sama... */}
+      {/* DRILL DOWN MODAL */}
+      {drillDownFilter && (
+        <div className="fixed inset-0 z-[100] bg-black/80 backdrop-blur-xl flex items-center justify-center p-6 animate-in fade-in duration-500">
+            <div className="bg-white w-full max-w-6xl h-[85vh] rounded-[4rem] shadow-2xl flex flex-col overflow-hidden border-4 border-white/20">
+                <div className="p-10 border-b border-gray-100 flex justify-between items-center bg-gray-50/50">
+                    <div>
+                        <h4 className="text-2xl font-black text-gray-800 uppercase italic tracking-tighter">Listing: <span className="text-[#EE2E24]">{drillDownFilter.label}</span></h4>
+                        <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest mt-2">Menampilkan {filteredDrillDownJobs.length} data pekerjaan</p>
+                    </div>
+                    <button onClick={() => setDrillDownFilter(null)} className="p-4 bg-white text-gray-400 hover:text-red-600 rounded-2xl shadow-xl hover:shadow-red-50 transition-all active:scale-95"><X size={28}/></button>
+                </div>
+                <div className="flex-1 overflow-auto p-10 scrollbar-hide">
+                    <table className="w-full text-xs text-left border-separate border-spacing-y-4">
+                        <thead className="sticky top-0 z-20 bg-gray-50/90 backdrop-blur-md rounded-2xl font-black uppercase text-gray-400 tracking-widest">
+                            <tr>
+                                <th className="p-6">Pekerjaan</th>
+                                <th className="p-6">Kategori</th>
+                                <th className="p-6">Unit</th>
+                                <th className="p-6">Deadline</th>
+                                <th className="p-6 text-center">Status</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {filteredDrillDownJobs.map((job) => (
+                                <tr 
+                                  key={job.id} 
+                                  onClick={() => setSelectedJobDetail(job)}
+                                  className="hover:bg-gray-50 transition-all group bg-white shadow-sm cursor-pointer"
+                                >
+                                    <td className="p-6 rounded-l-[2rem] border-y border-l border-gray-100">
+                                        <div className="font-black text-gray-800 uppercase italic text-sm">{job.jobType}</div>
+                                        <div className="text-[10px] text-gray-400 font-bold uppercase">{job.subCategory}</div>
+                                    </td>
+                                    <td className="p-6 border-y border-gray-100 font-bold text-gray-500 uppercase">{job.category}</td>
+                                    <td className="p-6 border-y border-gray-100 font-black text-gray-800">{job.branchDept}</td>
+                                    <td className="p-6 border-y border-gray-100 font-bold text-gray-500 italic">{new Date(job.deadline).toLocaleDateString()}</td>
+                                    <td className="p-6 rounded-r-[2rem] border-y border-r border-gray-100 text-center">
+                                        <span className={`px-4 py-1.5 rounded-xl text-[10px] font-black uppercase border ${getStatusStyle(job.status)}`}>{job.status}</span>
+                                    </td>
+                                </tr>
+                            ))}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+      )}
+
+      {/* JOB DETAIL MODAL */}
+      {selectedJobDetail && (
+        <div className="fixed inset-0 z-[110] bg-black/80 backdrop-blur-xl flex items-center justify-center p-6 animate-in zoom-in-95 duration-300">
+           <div className="bg-white w-full max-w-2xl rounded-[4rem] shadow-2xl overflow-hidden border-4 border-white/20">
+              <div className="p-10 bg-[#002F6C] text-white flex justify-between items-start">
+                  <div>
+                    <span className="px-4 py-1.5 bg-[#EE2E24] rounded-full text-[10px] font-black uppercase tracking-widest">Detail Pekerjaan</span>
+                    <h4 className="text-3xl font-black uppercase italic mt-4 leading-tight">{selectedJobDetail.jobType}</h4>
+                    <p className="text-white/60 font-bold uppercase text-[10px] mt-2 tracking-widest">{selectedJobDetail.category} / {selectedJobDetail.subCategory}</p>
+                  </div>
+                  <button onClick={() => setSelectedJobDetail(null)} className="p-4 bg-white/10 hover:bg-[#EE2E24] text-white rounded-2xl transition-all shadow-xl"><X size={24}/></button>
+              </div>
+              <div className="p-12 space-y-8">
+                  <div className="grid grid-cols-2 gap-8">
+                      <div className="space-y-1">
+                        <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest flex items-center gap-2"><MapPin size={14}/> Cabang / Dept</p>
+                        <p className="font-black text-gray-800 text-lg uppercase italic">{selectedJobDetail.branchDept}</p>
+                      </div>
+                      <div className="space-y-1">
+                        <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest flex items-center gap-2"><UserIcon size={14}/> Dibuat Oleh</p>
+                        <p className="font-bold text-gray-600 truncate">{selectedJobDetail.createdBy || 'System'}</p>
+                      </div>
+                      <div className="space-y-1">
+                        <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest flex items-center gap-2"><Calendar size={14}/> Deadline</p>
+                        <p className="font-black text-red-600 text-lg">{new Date(selectedJobDetail.deadline).toLocaleDateString('id-ID', {day: 'numeric', month: 'long', year: 'numeric'})}</p>
+                      </div>
+                      <div className="space-y-1">
+                        <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest flex items-center gap-2"><FileText size={14}/> Status</p>
+                        <span className={`inline-block px-4 py-1.5 rounded-xl text-[10px] font-black uppercase border ${getStatusStyle(selectedJobDetail.status)}`}>{selectedJobDetail.status}</span>
+                      </div>
+                  </div>
+                  <div className="p-8 bg-gray-50 rounded-[2.5rem] border border-gray-100">
+                    <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-3 flex items-center gap-2"><Info size={14}/> Deskripsi & Catatan</p>
+                    <p className="text-gray-600 font-medium leading-relaxed">{selectedJobDetail.keterangan || 'Tidak ada keterangan tambahan.'}</p>
+                  </div>
+                  <div className="flex justify-end pt-4">
+                    <button onClick={() => setSelectedJobDetail(null)} className="px-12 py-4 bg-[#002F6C] text-white rounded-[2rem] font-black uppercase text-xs tracking-widest shadow-xl shadow-blue-100 hover:bg-blue-900 transition-all">Tutup Detail</button>
+                  </div>
+              </div>
+           </div>
+        </div>
+      )}
     </div>
   );
 };
