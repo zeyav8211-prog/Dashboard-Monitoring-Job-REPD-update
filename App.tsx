@@ -240,6 +240,7 @@ function App() {
           jobs={visibleJobs} 
           allJobs={jobs} 
           onDeleteJob={handleDeleteJob} 
+          onBulkAddJobs={handleBulkAdd}
           isLoading={isLoading} 
           isSaving={isSaving} 
           storageProvider={storageProvider}
