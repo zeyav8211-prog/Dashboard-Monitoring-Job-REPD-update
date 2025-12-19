@@ -1,4 +1,3 @@
-
 import React, { useMemo, useState, useRef } from 'react';
 import { Job, Status } from '../types';
 import { MENU_STRUCTURE } from '../constants';
@@ -7,8 +6,7 @@ import {
   Cell
 } from 'recharts';
 import { 
-  CheckCircle2, Clock, LayoutDashboard, AlertOctagon, 
-  RefreshCcw, X, Briefcase, TrendingUp, Target, Trash2, Eye, Calendar, User as UserIcon, FileText, MapPin, Info, Download, Upload, FileType
+  CheckCircle2, Clock, LayoutDashboard, RefreshCcw, X, Briefcase, TrendingUp, Target, Trash2, Eye, Calendar, User as UserIcon, FileText, MapPin, Info, Download, Upload, FileType
 } from 'lucide-react';
 
 interface DashboardSummaryProps {
@@ -32,7 +30,8 @@ export const DashboardSummary: React.FC<DashboardSummaryProps> = ({
     storageProvider = 'GAS',
     onProviderChange,
     onForceSync,
-    onBulkAddJobs
+    onBulkAddJobs,
+    onDeleteJob
 }) => {
   const [drillDownFilter, setDrillDownFilter] = useState<{label: string, filter: (j: Job) => boolean} | null>(null);
   const [selectedJobDetail, setSelectedJobDetail] = useState<Job | null>(null);
@@ -83,19 +82,30 @@ export const DashboardSummary: React.FC<DashboardSummaryProps> = ({
       case 'In Progress': 
       case 'On Proses': return 'bg-blue-100 text-blue-700 border-blue-200';
       case 'Cancel':
-      case 'Drop': return 'bg-gray-100 text-gray-700 border-gray-200';
+      case 'Drop': return 'bg-red-50 text-red-700 border-red-200';
       default: return 'bg-amber-100 text-amber-700 border-amber-200';
     }
   };
 
-  // CSV Functions
+  const getDeadlineStyle = (deadline: string, status: Status) => {
+    if (['Completed', 'DONE', 'Cancel', 'Drop'].includes(status)) return '';
+    const today = new Date(); today.setHours(0,0,0,0);
+    const dl = new Date(deadline); dl.setHours(0,0,0,0);
+    const diffTime = dl.getTime() - today.getTime();
+    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+
+    if (diffDays <= 0) return 'animate-blink-red px-3 py-1 rounded-xl text-white shadow-lg';
+    if (diffDays === 1) return 'animate-blink-orange px-3 py-1 rounded-xl text-white shadow-lg';
+    return '';
+  };
+
   const downloadCSV = () => {
     const source = allJobs.length > 0 ? allJobs : jobs;
     const headers = ["ID", "Category", "SubCategory", "DateInput", "BranchDept", "JobType", "Status", "Deadline", "CreatedBy"];
     const csvContent = [
       headers.join(","),
       ...source.map(j => [
-        j.id, j.category, j.subCategory, j.dateInput, j.branchDept, `"${j.jobType}"`, j.status, j.deadline, j.createdBy
+        j.id, j.category, j.subCategory, j.dateInput, j.branchDept, `"${j.jobType}"`, j.status, j.deadline, j.createdBy || 'System'
       ].join(","))
     ].join("\n");
     
@@ -131,8 +141,6 @@ export const DashboardSummary: React.FC<DashboardSummaryProps> = ({
       const text = event.target?.result as string;
       const lines = text.split(/\r\n|\n/);
       const newJobs: Job[] = [];
-      const headers = lines[0].split(",");
-
       for (let i = 1; i < lines.length; i++) {
         if (!lines[i].trim()) continue;
         const cols = lines[i].split(",").map(c => c.replace(/^"|"$/g, '').trim());
@@ -145,7 +153,8 @@ export const DashboardSummary: React.FC<DashboardSummaryProps> = ({
           branchDept: cols[3],
           jobType: cols[4],
           status: (cols[5] as Status) || 'Pending',
-          deadline: cols[6] || cols[2]
+          deadline: cols[6] || cols[2],
+          createdBy: 'Import'
         } as Job);
       }
       if (newJobs.length > 0) onBulkAddJobs?.(newJobs);
@@ -157,7 +166,6 @@ export const DashboardSummary: React.FC<DashboardSummaryProps> = ({
 
   return (
     <div className="space-y-8 animate-in fade-in duration-700 pb-20">
-      {/* HEADER SECTION */}
       <div className="flex flex-col lg:flex-row justify-between items-start lg:items-center gap-6">
         <div className="flex items-center gap-6">
           <div className="p-6 bg-[#EE2E24] rounded-[2rem] text-white shadow-2xl shadow-red-200">
@@ -173,7 +181,6 @@ export const DashboardSummary: React.FC<DashboardSummaryProps> = ({
           </div>
         </div>
 
-        {/* CLOUD & TOOLS SELECTOR */}
         <div className="flex flex-col md:flex-row items-center gap-3">
             <div className="flex items-center gap-2 bg-white p-2 rounded-[2rem] shadow-xl border border-gray-100">
                 <button onClick={downloadTemplate} title="Download Template CSV" className="p-3 text-blue-600 hover:bg-blue-50 rounded-full transition-all">
@@ -210,7 +217,6 @@ export const DashboardSummary: React.FC<DashboardSummaryProps> = ({
         </div>
       </div>
 
-      {/* STATS CARDS GRID */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
         {[
           { label: 'Total Task', value: stats.total, icon: Briefcase, color: 'blue', filter: () => true },
@@ -239,7 +245,6 @@ export const DashboardSummary: React.FC<DashboardSummaryProps> = ({
         ))}
       </div>
 
-      {/* ANALYTICS SECTION */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
         <div className="lg:col-span-2 bg-white p-12 rounded-[4rem] shadow-2xl border border-gray-100">
           <div className="mb-12">
@@ -292,10 +297,9 @@ export const DashboardSummary: React.FC<DashboardSummaryProps> = ({
         </div>
       </div>
 
-      {/* DRILL DOWN MODAL (DETAIL DATA) */}
       {drillDownFilter && (
         <div className="fixed inset-0 z-[100] bg-black/60 backdrop-blur-md flex items-center justify-center p-6 animate-in fade-in">
-          <div className="bg-white w-full max-w-5xl h-[85vh] rounded-[4rem] shadow-2xl flex flex-col overflow-hidden">
+          <div className="bg-white w-full max-w-6xl h-[85vh] rounded-[4rem] shadow-2xl flex flex-col overflow-hidden">
             <div className="p-10 border-b border-gray-100 flex justify-between items-center bg-gray-50/50">
               <div>
                 <h4 className="text-3xl font-black text-gray-800 uppercase italic tracking-tighter">Detail Data: <span className="text-[#EE2E24]">{drillDownFilter.label}</span></h4>
@@ -304,40 +308,63 @@ export const DashboardSummary: React.FC<DashboardSummaryProps> = ({
               <button onClick={() => setDrillDownFilter(null)} className="p-4 bg-white text-gray-400 hover:text-red-600 rounded-[1.5rem] shadow-xl transition-all"><X size={28}/></button>
             </div>
             <div className="flex-1 overflow-auto p-10 scrollbar-hide">
-              <div className="space-y-4">
-                {filteredDrillDownJobs.map((job) => (
-                  <div 
-                    key={job.id} 
-                    onClick={() => setSelectedJobDetail(job)}
-                    className="flex items-center justify-between p-6 bg-gray-50 rounded-3xl border border-gray-100 hover:bg-white hover:shadow-xl hover:-translate-y-1 transition-all cursor-pointer group"
-                  >
-                    <div className="flex items-center gap-6">
-                      <div className={`p-4 rounded-2xl ${getStatusStyle(job.status)}`}>
-                        <FileText size={24} />
-                      </div>
-                      <div>
-                        <p className="font-black text-gray-800 text-lg leading-tight uppercase italic">{job.jobType}</p>
-                        <div className="flex items-center gap-4 mt-2">
-                          <span className="text-[10px] font-bold text-gray-400 uppercase flex items-center gap-1"><MapPin size={12}/> {job.branchDept}</span>
-                          <span className="text-[10px] font-bold text-gray-400 uppercase flex items-center gap-1"><Calendar size={12}/> {new Date(job.deadline).toLocaleDateString()}</span>
-                        </div>
-                      </div>
-                    </div>
-                    <div className="flex items-center gap-4">
-                      <span className={`px-4 py-2 rounded-xl text-[10px] font-black uppercase border ${getStatusStyle(job.status)}`}>{job.status}</span>
-                      <div className="p-3 bg-white text-gray-300 group-hover:text-[#002F6C] rounded-xl shadow-sm transition-colors">
-                        <Eye size={20} />
-                      </div>
-                    </div>
-                  </div>
-                ))}
+              <div className="overflow-x-auto rounded-[2.5rem] border border-gray-100 shadow-sm bg-white overflow-hidden">
+                  <table className="w-full text-sm text-left">
+                    <thead className="bg-gray-50 text-[10px] font-black uppercase tracking-widest text-gray-400 border-b">
+                      <tr>
+                        <th className="p-6">Pekerjaan</th>
+                        <th className="p-6">Cabang / Dept</th>
+                        <th className="p-6">Status</th>
+                        <th className="p-6">Deadline</th>
+                        <th className="p-6">Dibuat Oleh</th>
+                        <th className="p-6 text-center">Aksi</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-gray-50">
+                      {filteredDrillDownJobs.length === 0 ? (
+                        <tr><td colSpan={6} className="p-20 text-center text-gray-400 italic">Data tidak ditemukan.</td></tr>
+                      ) : (
+                        filteredDrillDownJobs.map((job) => (
+                          <tr key={job.id} onClick={() => setSelectedJobDetail(job)} className="hover:bg-gray-50/80 transition-all cursor-pointer group">
+                            <td className="p-6">
+                              <div className="font-black text-gray-800 text-[13px] uppercase italic">{job.jobType}</div>
+                              <div className="text-[9px] text-gray-400 font-bold uppercase mt-1">{job.category} / {job.subCategory}</div>
+                            </td>
+                            <td className="p-6 font-black text-gray-600">{job.branchDept}</td>
+                            <td className="p-6">
+                              <span className={`px-4 py-1.5 rounded-xl text-[9px] font-black uppercase border ${getStatusStyle(job.status)}`}>{job.status}</span>
+                            </td>
+                            <td className="p-6">
+                              <span className={`font-black text-gray-500 text-[11px] ${getDeadlineStyle(job.deadline, job.status)}`}>
+                                {new Date(job.deadline).toLocaleDateString()}
+                              </span>
+                            </td>
+                            <td className="p-6 text-[11px] font-bold text-gray-400 truncate max-w-[120px]">{job.createdBy || 'System'}</td>
+                            <td className="p-6 text-center">
+                              <div className="flex items-center justify-center gap-2">
+                                {['Cancel', 'Drop'].includes(job.status) && (
+                                  <button 
+                                    onClick={(e) => { e.stopPropagation(); onDeleteJob(job.id); }}
+                                    className="p-3 bg-red-50 text-red-600 rounded-xl hover:bg-red-600 hover:text-white transition-all shadow-sm"
+                                    title="Hapus Pekerjaan"
+                                  >
+                                    <Trash2 size={18} />
+                                  </button>
+                                )}
+                                <div className="p-3 text-gray-300 group-hover:text-[#002F6C] transition-colors"><Eye size={18}/></div>
+                              </div>
+                            </td>
+                          </tr>
+                        ))
+                      )}
+                    </tbody>
+                  </table>
               </div>
             </div>
           </div>
         </div>
       )}
 
-      {/* JOB DETAIL MODAL (FULL INFO) */}
       {selectedJobDetail && (
         <div className="fixed inset-0 z-[110] bg-black/80 backdrop-blur-xl flex items-center justify-center p-6 animate-in zoom-in-95 duration-300">
            <div className="bg-white w-full max-w-2xl rounded-[4rem] shadow-2xl overflow-hidden border-4 border-white/20">
@@ -356,7 +383,7 @@ export const DashboardSummary: React.FC<DashboardSummaryProps> = ({
                         <p className="font-black text-gray-800 text-lg uppercase italic">{selectedJobDetail.branchDept}</p>
                       </div>
                       <div className="space-y-1">
-                        <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest flex items-center gap-2"><UserIcon size={14}/> Creator</p>
+                        <p className="text-[10px] font-black text-gray-400 uppercase tracking-widest flex items-center gap-2"><UserIcon size={14}/> Dibuat Oleh</p>
                         <p className="font-bold text-gray-600 truncate">{selectedJobDetail.createdBy || 'System'}</p>
                       </div>
                       <div className="space-y-1">
