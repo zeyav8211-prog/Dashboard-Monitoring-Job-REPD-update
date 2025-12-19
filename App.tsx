@@ -8,13 +8,19 @@ import { TarifValidator } from './components/TarifValidator';
 import { ReportSuratManager } from './components/ReportSuratManager';
 import { ProduksiMasterManager } from './components/ProduksiMasterManager';
 import { CompetitorManager } from './components/CompetitorManager';
-import { Job, User, ValidationLog } from './types';
+import { Job, User, ValidationLog, Status } from './types';
 import { AUTHORIZED_USERS } from './constants';
 import { driveApi } from './services/driveApi';
 import { api as jsonBinApi } from './services/api';
 import { WifiOff } from 'lucide-react';
 
 type StorageProvider = 'GAS' | 'JSONBIN' | 'BOTH';
+
+interface MergedData {
+  jobs: Job[];
+  validationLogs: ValidationLog[];
+  users: User[];
+}
 
 function App() {
   const [currentUser, setCurrentUser] = useState<User | null>(() => {
@@ -38,20 +44,20 @@ function App() {
   const [connectionError, setConnectionError] = useState(false);
   const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
 
-  const mergeDatasets = (gasData: any, binData: any) => {
+  const mergeDatasets = (gasData: any, binData: any): MergedData => {
     const jobMap = new Map<string, Job>();
-    const gasJobs = Array.isArray(gasData?.jobs) ? gasData.jobs : [];
-    const binJobs = Array.isArray(binData?.jobs) ? binData.jobs : [];
+    const gasJobs: Job[] = Array.isArray(gasData?.jobs) ? gasData.jobs : [];
+    const binJobs: Job[] = Array.isArray(binData?.jobs) ? binData.jobs : [];
     [...gasJobs, ...binJobs].forEach((j: Job) => { if (j && j.id) jobMap.set(j.id, j); });
 
     const logMap = new Map<string, ValidationLog>();
-    const gasLogs = Array.isArray(gasData?.validationLogs) ? gasData.validationLogs : [];
-    const binLogs = Array.isArray(binData?.validationLogs) ? binData.validationLogs : [];
+    const gasLogs: ValidationLog[] = Array.isArray(gasData?.validationLogs) ? gasData.validationLogs : [];
+    const binLogs: ValidationLog[] = Array.isArray(binData?.validationLogs) ? binData.validationLogs : [];
     [...gasLogs, ...binLogs].forEach((l: ValidationLog) => { if (l && l.id) logMap.set(l.id, l); });
 
     const userMap = new Map<string, User>();
-    const gasUsers = Array.isArray(gasData?.users) ? gasData.users : [];
-    const binUsers = Array.isArray(binData?.users) ? binData.users : [];
+    const gasUsers: User[] = Array.isArray(gasData?.users) ? gasData.users : [];
+    const binUsers: User[] = Array.isArray(binData?.users) ? binData.users : [];
     [...gasUsers, ...binUsers].forEach((u: User) => { if (u && u.email) userMap.set(u.email.toLowerCase(), u); });
 
     return {
@@ -64,7 +70,7 @@ function App() {
   const fetchData = useCallback(async () => {
     if (isSaving) return;
     try {
-      let finalData: { jobs: Job[], validationLogs: ValidationLog[], users: User[] } | null = null;
+      let finalData: MergedData | null = null;
       if (storageProvider === 'BOTH') {
         const [gasRes, binRes] = await Promise.allSettled([driveApi.getData(), jsonBinApi.getData()]);
         const gasData = gasRes.status === 'fulfilled' ? gasRes.value : null;
@@ -86,7 +92,7 @@ function App() {
       if (finalData) {
         setJobs(finalData.jobs);
         setValidationLogs(finalData.validationLogs);
-        const mergedUsers = AUTHORIZED_USERS.map(defaultUser => {
+        const mergedUsers = AUTHORIZED_USERS.map((defaultUser: User) => {
             const cloudUser = finalData!.users.find((u: User) => u.email.toLowerCase() === defaultUser.email.toLowerCase());
             return { ...defaultUser, password: cloudUser ? cloudUser.password : defaultUser.password };
         });
@@ -104,7 +110,7 @@ function App() {
 
   useEffect(() => {
     fetchData();
-    const interval = setInterval(fetchData, 45000); // 45s interval
+    const interval = setInterval(fetchData, 45000);
     return () => clearInterval(interval);
   }, [fetchData]);
 
@@ -199,8 +205,8 @@ function App() {
       onChangePassword={() => false}
     >
       {connectionError && (
-        <div className="mb-4 bg-red-100 border border-red-400 text-red-700 px-4 py-2 rounded flex items-center gap-2 animate-pulse">
-          <WifiOff size={16} /> <strong>Koneksi Error:</strong> Gagal sinkronisasi dengan {storageProvider}.
+        <div className="mb-6 bg-red-100 border-2 border-red-200 text-red-700 px-6 py-4 rounded-[2rem] flex items-center gap-3 animate-pulse">
+          <WifiOff size={20} /> <span className="font-bold uppercase text-xs italic tracking-tighter">Koneksi Cloud Terganggu - Mode Offline Aktif</span>
         </div>
       )}
       
@@ -232,7 +238,7 @@ function App() {
        activeCategory ? <JobManager category={activeCategory} subCategory={activeSubCategory || ''} jobs={visibleJobs} onAddJob={handleAddJob} onUpdateJob={handleUpdateJob} onDeleteJob={handleDeleteJob} onDeleteCancelled={() => {}} onBulkAddJobs={handleBulkAdd} currentUser={currentUser} /> :
        <DashboardSummary 
           jobs={visibleJobs} 
-          allJobs={jobs} // Pass full jobs for global summary stats
+          allJobs={jobs} 
           onDeleteJob={handleDeleteJob} 
           isLoading={isLoading} 
           isSaving={isSaving} 
